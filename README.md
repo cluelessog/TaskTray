@@ -1,4 +1,4 @@
-# ◆ CMD CENTER
+# ◆ TASKTRAY
 
 A local-first personal dashboard that auto-discovers projects from your disk and syncs with your Obsidian vault. Runs as a system tray app on Windows.
 
@@ -18,7 +18,7 @@ The dashboard opens at `http://127.0.0.1:9876` and a system tray icon (◆) appe
 
 ## How It Works
 
-CMD Center pulls items from **three sources** and merges them into one dashboard:
+TaskTray pulls items from **three sources** and merges them into one dashboard:
 
 ### 1. Disk Scanner
 Automatically discovers projects by walking your configured directories and looking for marker files (`.git`, `package.json`, `Cargo.toml`, `pyproject.toml`, etc.).
@@ -134,12 +134,12 @@ Should explore building a VS Code extension for trade logging.
 
 ## Auto-Start with Windows
 
-Run `add-to-startup.bat` to launch CMD Center automatically when Windows boots (runs silently in the background).
+Run `add-to-startup.bat` to launch TaskTray automatically when Windows boots (runs silently in the background).
 
 ## File Structure
 
 ```
-cmd-center/
+TaskTray/
 ├── config.yaml          # Your configuration
 ├── server.py            # Main server (Flask + tray + sync)
 ├── scanner.py           # Disk project discovery

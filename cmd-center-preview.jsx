@@ -161,7 +161,7 @@ export default function CMDCenter() {
                 <path d="M12 7L17 12L12 17L7 12Z" fill="#00e5cc" opacity="0.6" />
               </svg>
             </div>
-            <span style={S.logoText}>CMD CENTER</span>
+            <span style={S.logoText}>TASKTRAY</span>
             <span style={S.logoDivider} />
             <span style={S.logoVersion}>v1.0</span>
           </div>

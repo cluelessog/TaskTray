@@ -1,5 +1,5 @@
 """
-CMD Center — Main Server
+TaskTray — Main Server
 Flask API + System Tray + Background Sync
 
 Run: python server.py
@@ -28,7 +28,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
-log = logging.getLogger("cmd-center")
+log = logging.getLogger("tasktray")
 
 # ── Config ───────────────────────────────────────────────
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
@@ -189,7 +189,7 @@ def run_tray():
         pystray.MenuItem("Quit", on_quit),
     )
 
-    icon = pystray.Icon("cmd-center", create_icon(), "CMD Center", menu)
+    icon = pystray.Icon("tasktray", create_icon(), "TaskTray", menu)
     log.info("System tray icon ready — double-click to open dashboard")
     icon.run()
 

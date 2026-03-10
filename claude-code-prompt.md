@@ -1,10 +1,10 @@
-# CMD Center — Claude Code Session Prompt
+# TaskTray — Claude Code Session Prompt
 
 Paste everything below into your Claude Code session:
 
 ---
 
-I'm building **CMD Center** — a local-first personal dashboard that runs as a Windows system tray app. The project is already scaffolded and I need your help iterating on it.
+I'm building **TaskTray** — a local-first personal dashboard that runs as a Windows system tray app. The project is already scaffolded and I need your help iterating on it.
 
 ## What it does
 - **Disk Scanner**: Auto-discovers projects by walking configured directories looking for markers (`.git`, `package.json`, `Cargo.toml`, `pyproject.toml`, `tauri.conf.json`, etc.)
@@ -25,7 +25,7 @@ I'm building **CMD Center** — a local-first personal dashboard that runs as a 
 
 ## File Structure
 ```
-cmd-center/
+TaskTray/
 ├── config.yaml          # User configuration (scan dirs, vault path, categories)
 ├── server.py            # Flask server + system tray + background sync orchestration
 ├── scanner.py           # Disk project discovery (walks dirs, detects project types)
@@ -288,7 +288,7 @@ When parsing a note, fields are resolved in this order:
 The system reads raw `.md` files — no Obsidian plugin needed. But for convenience, consider:
 - **Templater plugin**: Create a template for new dashboard notes with pre-filled frontmatter
 - **QuickAdd plugin**: Set up a macro to create a new note in `Dashboard/` folder with one hotkey
-- **Dataview plugin**: You can query your dashboard notes within Obsidian itself (separate from CMD Center)
+- **Dataview plugin**: You can query your dashboard notes within Obsidian itself (separate from TaskTray)
 
 **Suggested Templater template (`Dashboard Note.md`):**
 ```markdown

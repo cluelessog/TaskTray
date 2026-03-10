@@ -1,6 +1,6 @@
 @echo off
 echo.
-echo  ◆ CMD CENTER — Setup
+echo  ◆ TASKTRAY — Setup
 echo  ─────────────────────
 echo.
 
