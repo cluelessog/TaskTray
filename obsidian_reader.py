@@ -7,6 +7,7 @@ Obsidian Reader — reads notes from an Obsidian vault using three methods:
 
 import os
 import re
+import hashlib
 import yaml
 from pathlib import Path
 from datetime import datetime
@@ -176,7 +177,7 @@ def _parse_note(file_path: Path, vault_path: Path, source_method: str,
     rel_path = str(file_path.relative_to(vault_path))
 
     return {
-        "id": f"obs_{hash(rel_path) & 0xFFFFFFFF:08x}",
+        "id": f"obs_{hashlib.md5(rel_path.encode()).hexdigest()[:8]}",
         "title": title,
         "path": str(file_path),
         "vault_relative_path": rel_path,

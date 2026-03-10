@@ -4,6 +4,7 @@ Disk Scanner — discovers projects by looking for marker files/folders.
 
 import os
 import json
+import hashlib
 import time
 from pathlib import Path
 from datetime import datetime
@@ -72,7 +73,7 @@ def _build_project_info(path: Path, markers: set) -> dict:
     category = _guess_category(path, project_type)
 
     return {
-        "id": f"disk_{hash(str(path)) & 0xFFFFFFFF:08x}",
+        "id": f"disk_{hashlib.md5(str(path).encode()).hexdigest()[:8]}",
         "title": path.name,
         "path": str(path),
         "source": "disk",
