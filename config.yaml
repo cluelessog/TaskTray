@@ -1,0 +1,77 @@
+# ============================================================
+# CMD CENTER — Configuration
+# ============================================================
+
+# --- Server ---
+server:
+  host: "127.0.0.1"
+  port: 9876
+
+# --- Project Scanner ---
+# Directories to scan for projects (supports both Windows and WSL paths)
+scanner:
+  scan_dirs:
+    - "D:/Projects"
+    - "D:/Code"
+    # - "C:/Users/YourName/Documents/Projects"
+    # WSL paths also work:
+    # - "/home/sourabh/projects"
+
+  # How deep to look for project markers
+  max_depth: 3
+
+  # Files/folders that indicate a project root
+  markers:
+    - ".git"
+    - "package.json"
+    - "Cargo.toml"
+    - "pyproject.toml"
+    - "setup.py"
+    - "go.mod"
+    - "pom.xml"
+    - "Makefile"
+    - "docker-compose.yml"
+    - "tauri.conf.json"
+
+  # Directories to skip during scanning
+  ignore_dirs:
+    - "node_modules"
+    - ".git"
+    - "__pycache__"
+    - "venv"
+    - ".venv"
+    - "target"
+    - "dist"
+    - "build"
+    - ".next"
+
+# --- Obsidian Integration ---
+obsidian:
+  # Path to your Obsidian vault root
+  vault_path: "D:/Obsidian/MyVault"
+
+  # Method 1: Specific folder — any .md file here becomes a dashboard item
+  dashboard_folder: "Dashboard"
+
+  # Method 2: Tags — notes with these tags anywhere in the vault
+  tags:
+    - "#dashboard/project"
+    - "#dashboard/idea"
+    - "#dashboard/task"
+    - "#dashboard/learning"
+
+  # Method 3: YAML frontmatter key that marks a note for the dashboard
+  frontmatter_key: "dashboard"   # looks for `dashboard: true` in frontmatter
+
+  # Watch for file changes and auto-sync
+  watch: true
+  watch_interval_seconds: 5
+
+# --- Categories (match your workflow) ---
+categories:
+  dev: "Dev"
+  trading: "Trading"
+  teaching: "Teaching"
+  ideas: "Ideas"
+  personal: "Personal"
+  learning: "Learning"
