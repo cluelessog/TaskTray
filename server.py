@@ -208,9 +208,12 @@ def main():
     sync_thread = threading.Thread(target=background_sync, args=(watch_interval,), daemon=True)
     sync_thread.start()
 
-    # Start system tray in a thread
-    tray_thread = threading.Thread(target=run_tray, daemon=True)
-    tray_thread.start()
+    # Start Flask in a background thread (so main thread is free for tray)
+    flask_thread = threading.Thread(
+        target=lambda: app.run(host=host, port=port, debug=False, use_reloader=False),
+        daemon=True,
+    )
+    flask_thread.start()
 
     log.info(f"Dashboard running at http://{host}:{port}")
     log.info("System tray icon active — double-click to open")
@@ -218,8 +221,8 @@ def main():
     # Open browser on first run
     webbrowser.open(f"http://{host}:{port}")
 
-    # Run Flask
-    app.run(host=host, port=port, debug=False, use_reloader=False)
+    # Run system tray on main thread (required on Windows for Win32 message pump)
+    run_tray()
 
 
 if __name__ == "__main__":
