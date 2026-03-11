@@ -2,6 +2,7 @@
 Data Store — merges items from disk scanner, Obsidian, and manual entries.
 Persists manual items and overrides to a local JSON file.
 """
+from __future__ import annotations
 
 import json
 import threading

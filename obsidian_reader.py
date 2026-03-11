@@ -4,6 +4,7 @@ Obsidian Reader — reads notes from an Obsidian vault using three methods:
 2. Tags — notes with specific tags anywhere in the vault
 3. YAML frontmatter — notes with `dashboard: true` in frontmatter
 """
+from __future__ import annotations
 
 import os
 import re

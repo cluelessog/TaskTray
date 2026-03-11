@@ -7,7 +7,8 @@ Run: python server.py
 
 import json
 import time
-import webbrowser
+import socket
+import atexit
 import threading
 import logging
 import yaml
@@ -22,11 +23,25 @@ from scanner import scan_for_projects
 from obsidian_reader import read_obsidian_items
 from store import DataStore
 
+try:
+    import webview
+    _HAS_WEBVIEW = True
+except ImportError:
+    _HAS_WEBVIEW = False
+    # log is not yet configured here; warning is deferred to main()
+
 # ── Logging ──────────────────────────────────────────────
+_log_dir = Path(__file__).parent / "data"
+_log_dir.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(_log_dir / "tasktray.log", encoding="utf-8"),
+    ],
 )
 log = logging.getLogger("tasktray")
 
@@ -40,6 +55,10 @@ def load_config() -> dict:
     return {}
 
 config = load_config()
+
+# ── Window State ─────────────────────────────────────────
+_webview_window: "webview.Window | None" = None  # type: ignore[name-defined]
+_is_quitting: bool = False
 
 # ── Data Store ───────────────────────────────────────────
 store = DataStore()
@@ -147,6 +166,23 @@ def background_sync(interval_seconds=30):
         time.sleep(interval_seconds)
 
 
+def _wait_for_flask(host: str, port: int, timeout: float = 5.0) -> bool:
+    """Block until Flask is accepting TCP connections, or timeout."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            result = sock.connect_ex((host, port))
+            if result == 0:
+                log.info("Flask ready on %s:%d", host, port)
+                return True
+        finally:
+            sock.close()
+        time.sleep(0.05)
+    log.warning("Flask did not become ready within %.1fs", timeout)
+    return False
+
+
 # ── System Tray ──────────────────────────────────────────
 
 def run_tray():
@@ -194,9 +230,76 @@ def run_tray():
     icon.run()
 
 
-# ── Main ─────────────────────────────────────────────────
+# ── Native Window Handlers ───────────────────────────────
 
-def main():
+def _on_window_closing():
+    """Intercept window close. Hide to tray unless quitting.
+
+    IMPORTANT: pywebview checks `return_value is False` (identity check).
+    Must return the literal `False`, not a falsy value.
+    This handler is synchronous -- do NOT perform expensive work here.
+    """
+    if _is_quitting:
+        return True
+    if _webview_window is not None:
+        _webview_window.hide()
+    return False  # Prevent window destruction
+
+
+def _run_tray_detached():
+    """Run system tray icon via run_detached() for native window mode."""
+    try:
+        import pystray
+        from PIL import Image, ImageDraw
+    except ImportError:
+        log.warning("pystray/Pillow not installed — skipping system tray.")
+        return
+
+    def create_icon():
+        img = Image.new("RGBA", (64, 64), (11, 17, 32, 255))
+        draw = ImageDraw.Draw(img)
+        draw.polygon([(32, 4), (60, 32), (32, 60), (4, 32)], fill=(34, 211, 238, 255))
+        draw.polygon([(32, 14), (50, 32), (32, 50), (14, 32)], fill=(11, 17, 32, 255))
+        return img
+
+    def on_open(icon, item):
+        if _webview_window is not None:
+            _webview_window.show()
+
+    def on_sync(icon, item):
+        run_sync()
+
+    def on_quit(icon, item):
+        global _is_quitting
+        _is_quitting = True
+        if _webview_window is not None:
+            _webview_window.destroy()
+        icon.stop()
+        # Process exits naturally when webview.start() returns after window destruction
+
+    menu = pystray.Menu(
+        pystray.MenuItem("Open Dashboard", on_open, default=True),
+        pystray.MenuItem("Sync Now", on_sync),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Quit", on_quit),
+    )
+
+    icon = pystray.Icon("tasktray", create_icon(), "TaskTray", menu)
+    log.info("System tray icon ready")
+
+    # Register cleanup for unexpected exits
+    atexit.register(lambda: icon.stop())
+
+    icon.run_detached()
+
+
+def _start_services(window):
+    """Called by webview.start() on a background thread.
+    Launches Flask, background sync, and pystray.
+    """
+    global _webview_window
+    _webview_window = window
+
     host = config.get("server", {}).get("host", "127.0.0.1")
     port = config.get("server", {}).get("port", 9876)
 
@@ -208,21 +311,58 @@ def main():
     sync_thread = threading.Thread(target=background_sync, args=(watch_interval,), daemon=True)
     sync_thread.start()
 
-    # Start Flask in a background thread (so main thread is free for tray)
+    # Start Flask in a background thread
     flask_thread = threading.Thread(
         target=lambda: app.run(host=host, port=port, debug=False, use_reloader=False),
         daemon=True,
     )
     flask_thread.start()
 
-    log.info(f"Dashboard running at http://{host}:{port}")
-    log.info("System tray icon active — double-click to open")
+    log.info("Dashboard running at http://%s:%d", host, port)
 
-    # Open browser on first run
-    webbrowser.open(f"http://{host}:{port}")
+    # Wait for Flask to be ready before the window loads
+    _wait_for_flask(host, port)
 
-    # Run system tray on main thread (required on Windows for Win32 message pump)
-    run_tray()
+    # Start system tray (detached -- runs its own message loop)
+    _run_tray_detached()
+
+
+# ── Main ─────────────────────────────────────────────────
+
+def main():
+    if not _HAS_WEBVIEW:
+        log.warning("pywebview not installed — will open in browser. Install with: pip install pywebview")
+
+    host = config.get("server", {}).get("host", "127.0.0.1")
+    port = config.get("server", {}).get("port", 9876)
+    url = f"http://{host}:{port}"
+
+    if _HAS_WEBVIEW:
+        # ── Native window mode ──
+        window = webview.create_window(
+            "TaskTray",
+            url,
+            width=1200,
+            height=800,
+        )
+        # Wire closing event via window.events (not a create_window kwarg)
+        window.events.closing += _on_window_closing
+        webview.start(func=_start_services, args=(window,))
+    else:
+        # ── Fallback: browser mode (current behavior) ──
+        run_sync()
+        watch_interval = config.get("obsidian", {}).get("watch_interval_seconds", 30)
+        sync_thread = threading.Thread(target=background_sync, args=(watch_interval,), daemon=True)
+        sync_thread.start()
+        flask_thread = threading.Thread(
+            target=lambda: app.run(host=host, port=port, debug=False, use_reloader=False),
+            daemon=True,
+        )
+        flask_thread.start()
+        log.info("Dashboard running at http://%s:%d", host, port)
+        import webbrowser
+        webbrowser.open(url)
+        run_tray()  # pystray on main thread (original behavior)
 
 
 if __name__ == "__main__":

@@ -31,7 +31,7 @@ echo.
 echo  NEXT STEPS:
 echo  1. Edit config.yaml — set your project directories and Obsidian vault path
 echo  2. Run: start.bat (or: python server.py)
-echo  3. Dashboard opens at http://127.0.0.1:9876
-echo  4. System tray icon appears — double-click to reopen anytime
+echo  3. Native window opens with your dashboard
+echo  4. System tray icon appears — click to show/hide, right-click to quit
 echo.
 pause

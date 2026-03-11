@@ -2,14 +2,14 @@
 echo  ◆ TASKTRAY — Add to Windows Startup
 echo.
 
-:: Create a VBS script that launches silently (no console window)
 set "SCRIPT_DIR=%~dp0"
 set "VBS_PATH=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\tasktray.vbs"
 
 echo Creating startup entry...
 (
 echo Set WshShell = CreateObject("WScript.Shell"^)
-echo WshShell.Run chr(34^) ^& "%SCRIPT_DIR%start.bat" ^& chr(34^), 0
+echo WshShell.CurrentDirectory = "%SCRIPT_DIR%"
+echo WshShell.Run chr(34^) ^& "%SCRIPT_DIR%.venv\Scripts\pythonw.exe" ^& chr(34^) ^& " " ^& chr(34^) ^& "%SCRIPT_DIR%server.py" ^& chr(34^), 0
 echo Set WshShell = Nothing
 ) > "%VBS_PATH%"
 

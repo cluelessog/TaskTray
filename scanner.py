@@ -1,6 +1,7 @@
 """
 Disk Scanner — discovers projects by looking for marker files/folders.
 """
+from __future__ import annotations
 
 import os
 import json
