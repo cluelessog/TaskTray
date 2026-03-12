@@ -11,8 +11,10 @@ import socket
 import atexit
 import threading
 import logging
+from logging.handlers import RotatingFileHandler
 import yaml
 import sys
+import webbrowser
 from pathlib import Path
 from datetime import datetime
 
@@ -40,7 +42,12 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(_log_dir / "tasktray.log", encoding="utf-8"),
+        RotatingFileHandler(
+            _log_dir / "tasktray.log",
+            maxBytes=5 * 1024 * 1024,  # 5 MB
+            backupCount=3,
+            encoding="utf-8",
+        ),
     ],
 )
 log = logging.getLogger("tasktray")
@@ -360,7 +367,6 @@ def main():
         )
         flask_thread.start()
         log.info("Dashboard running at http://%s:%d", host, port)
-        import webbrowser
         webbrowser.open(url)
         run_tray()  # pystray on main thread (original behavior)
 
