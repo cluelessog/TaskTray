@@ -15,7 +15,7 @@ import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
-import webview
+webview = pytest.importorskip("webview")
 
 
 # ── Helpers to import server with mocked dependencies ────────────

@@ -105,3 +105,40 @@ def test_patch_item_empty_after_filter(flask_client):
     item_id = r1.get_json()["id"]
     r2 = flask_client.patch(f"/api/items/{item_id}", json={"unknown_only": "val"})
     assert r2.status_code == 400
+
+
+# ── Endpoint smoke tests ───────────────────────────────────────────────────────
+
+def test_get_items_returns_200(flask_client):
+    r = flask_client.get("/api/items")
+    assert r.status_code == 200
+    assert isinstance(r.get_json(), list)
+
+
+def test_get_stats_returns_200(flask_client):
+    r = flask_client.get("/api/stats")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert "total" in data
+    assert "by_source" in data
+
+
+def test_delete_item_returns_200(flask_client):
+    r = flask_client.delete("/api/items/some_nonexistent_id")
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+
+
+def test_index_serves_html(flask_client, tmp_path):
+    import server as server_module
+    # Point Flask static folder to a temp dir with a fake index.html
+    original_static = server_module.app.static_folder
+    fake_static = tmp_path / "static"
+    fake_static.mkdir()
+    (fake_static / "index.html").write_text("<html><body>TaskTray</body></html>")
+    server_module.app.static_folder = str(fake_static)
+    try:
+        r = flask_client.get("/")
+        assert r.status_code == 200
+    finally:
+        server_module.app.static_folder = original_static
