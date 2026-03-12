@@ -16,7 +16,7 @@ OVERRIDES_FILE = Path(__file__).parent / "data" / "overrides.json"
 
 
 class DataStore:
-    def __init__(self):
+    def __init__(self) -> None:
         self._lock = threading.Lock()
         self._disk_items: list[dict] = []
         self._obsidian_items: list[dict] = []
@@ -24,10 +24,10 @@ class DataStore:
         self._overrides: dict[str, dict] = {}  # id -> partial overrides
         self._load_persisted()
 
-    def _ensure_data_dir(self):
+    def _ensure_data_dir(self) -> None:
         DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    def _load_persisted(self):
+    def _load_persisted(self) -> None:
         self._ensure_data_dir()
         # Load manual items
         if MANUAL_FILE.exists():
@@ -45,12 +45,12 @@ class DataStore:
             except (json.JSONDecodeError, OSError):
                 self._overrides = {}
 
-    def _save_manual(self):
+    def _save_manual(self) -> None:
         self._ensure_data_dir()
         with open(MANUAL_FILE, "w", encoding="utf-8") as f:
             json.dump(self._manual_items, f, indent=2, default=str)
 
-    def _save_overrides(self):
+    def _save_overrides(self) -> None:
         self._ensure_data_dir()
         with open(OVERRIDES_FILE, "w", encoding="utf-8") as f:
             json.dump(self._overrides, f, indent=2, default=str)
@@ -102,7 +102,7 @@ class DataStore:
             self._save_manual()
             return item
 
-    def update_item(self, item_id: str, updates: dict):
+    def update_item(self, item_id: str, updates: dict) -> dict:
         """Update an item. Manual items are updated directly; others get overrides."""
         with self._lock:
             # Check if it's a manual item
@@ -117,7 +117,7 @@ class DataStore:
             self._save_overrides()
             return updates
 
-    def delete_item(self, item_id: str):
+    def delete_item(self, item_id: str) -> None:
         """Delete a manual item or hide an auto-discovered item."""
         with self._lock:
             # Remove from manual

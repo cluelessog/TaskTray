@@ -12,6 +12,7 @@ import hashlib
 import yaml
 from pathlib import Path
 from datetime import datetime
+from typing import Any
 
 
 def read_obsidian_items(config: dict) -> list[dict]:
@@ -75,7 +76,7 @@ def read_obsidian_items(config: dict) -> list[dict]:
     return list(items_by_path.values())
 
 
-def _read_note(file_path: Path) -> tuple:
+def _read_note(file_path: Path) -> tuple[str | None, dict[str, Any] | None]:
     """Read a markdown file and extract frontmatter + content."""
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
@@ -83,7 +84,7 @@ def _read_note(file_path: Path) -> tuple:
     except (OSError, UnicodeDecodeError):
         return None, None
 
-    frontmatter = {}
+    frontmatter: dict[str, Any] = {}
     content = raw
 
     # Parse YAML frontmatter
@@ -99,7 +100,7 @@ def _read_note(file_path: Path) -> tuple:
     return content, frontmatter
 
 
-def _extract_tags(content: str) -> set:
+def _extract_tags(content: str) -> set[str]:
     """Extract #tags from note content (including nested tags like #dashboard/project)."""
     # Match #word and #word/word patterns, but not inside code blocks
     # Remove code blocks first
@@ -111,7 +112,7 @@ def _extract_tags(content: str) -> set:
 
 
 def _parse_note(file_path: Path, vault_path: Path, source_method: str,
-                content: str = None, frontmatter: dict = None) -> dict | None:
+                content: str | None = None, frontmatter: dict | None = None) -> dict | None:
     """Parse a markdown note into a dashboard item."""
     if content is None or frontmatter is None:
         content, frontmatter = _read_note(file_path)
@@ -151,7 +152,7 @@ def _parse_note(file_path: Path, vault_path: Path, source_method: str,
             category = fm_cat
 
     # Infer category from tag if not in frontmatter
-    if not frontmatter.get("category"):
+    if not (frontmatter or {}).get("category"):
         tags = _extract_tags(content)
         if any("project" in t for t in tags):
             category = "dev"
