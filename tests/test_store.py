@@ -305,3 +305,124 @@ def test_concurrent_adds_all_succeed(isolated_store):
     assert errors == [], f"Errors during concurrent adds: {errors}"
     items = isolated_store.get_all_items()
     assert len(items) == 10
+
+
+# ── TestAtomicWrites ──────────────────────────────────────────────────────────
+
+class TestAtomicWrites:
+    def test_atomic_write_creates_file(self, tmp_path, monkeypatch):
+        """Atomic write produces valid JSON."""
+        monkeypatch.setattr(store_module, "MANUAL_FILE", tmp_path / "manual_items.json")
+        monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+        monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+        s = DataStore()
+        s.add_manual_item({"title": "Atomic Item"})
+        manual_file = tmp_path / "manual_items.json"
+        assert manual_file.exists()
+        data = json.loads(manual_file.read_text())
+        assert isinstance(data, list)
+        assert any(i["title"] == "Atomic Item" for i in data)
+
+    def test_atomic_write_creates_backup(self, tmp_path, monkeypatch):
+        """Second save creates .bak of previous version."""
+        monkeypatch.setattr(store_module, "MANUAL_FILE", tmp_path / "manual_items.json")
+        monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+        monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+        s = DataStore()
+        s.add_manual_item({"title": "First Item"})
+        s.add_manual_item({"title": "Second Item"})
+        backup = tmp_path / "manual_items.json.bak"
+        assert backup.exists()
+
+
+# ── TestBackupOnLoad ──────────────────────────────────────────────────────────
+
+class TestBackupOnLoad:
+    def test_loads_backup_on_corrupted_primary(self, tmp_path, monkeypatch):
+        """If primary JSON is corrupted, fall back to .bak."""
+        manual_file = tmp_path / "manual_items.json"
+        backup_file = tmp_path / "manual_items.json.bak"
+        manual_file.write_text("NOT VALID JSON {{{")
+        backup_file.write_text(json.dumps([{"id": "bak_1", "title": "From Backup", "source": "manual"}]))
+        monkeypatch.setattr(store_module, "MANUAL_FILE", manual_file)
+        monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+        monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+        s = DataStore()
+        items = s.get_all_items()
+        assert len(items) == 1
+        assert items[0]["title"] == "From Backup"
+
+    def test_empty_when_both_corrupted(self, tmp_path, monkeypatch):
+        """If both primary and backup are corrupted, return empty."""
+        manual_file = tmp_path / "manual_items.json"
+        backup_file = tmp_path / "manual_items.json.bak"
+        manual_file.write_text("BAD JSON")
+        backup_file.write_text("ALSO BAD JSON")
+        monkeypatch.setattr(store_module, "MANUAL_FILE", manual_file)
+        monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+        monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+        s = DataStore()
+        assert s.get_all_items() == []
+
+
+# ── TestDeepcopy ──────────────────────────────────────────────────────────────
+
+class TestDeepcopy:
+    def test_returns_independent_copy(self, tmp_path, monkeypatch):
+        """Mutating returned items must not affect store internals."""
+        monkeypatch.setattr(store_module, "MANUAL_FILE", tmp_path / "manual_items.json")
+        monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+        monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+        s = DataStore()
+        s.add_manual_item({"title": "Original"})
+        items1 = s.get_all_items()
+        items1[0]["title"] = "Mutated"
+        items2 = s.get_all_items()
+        assert items2[0]["title"] == "Original"
+
+
+# ── TestDeleteItemFix ─────────────────────────────────────────────────────────
+
+class TestDeleteItemFix:
+    def test_delete_manual_only_saves_manual(self, tmp_path, monkeypatch):
+        """Deleting manual item must not write overrides file."""
+        monkeypatch.setattr(store_module, "MANUAL_FILE", tmp_path / "manual_items.json")
+        monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+        monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+        s = DataStore()
+        added = s.add_manual_item({"title": "Manual to Delete"})
+        overrides_file = tmp_path / "overrides.json"
+        # Remove overrides file so we can detect if it's written
+        if overrides_file.exists():
+            overrides_file.unlink()
+        s.delete_item(added["id"])
+        # Overrides file should NOT have been created for a manual item deletion
+        assert not overrides_file.exists()
+
+    def test_delete_auto_only_saves_overrides(self, tmp_path, monkeypatch):
+        """Hiding auto item must not rewrite manual file."""
+        manual_file = tmp_path / "manual_items.json"
+        monkeypatch.setattr(store_module, "MANUAL_FILE", manual_file)
+        monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+        monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+        s = DataStore()
+        s.update_disk_items([{"id": "disk_auto", "title": "Auto Item", "source": "disk"}])
+        # Remove manual file to detect if it's written
+        if manual_file.exists():
+            manual_file.unlink()
+        s.delete_item("disk_auto")
+        # Manual file should NOT have been written for an auto item deletion
+        assert not manual_file.exists()
+        assert s._overrides.get("disk_auto", {}).get("_hidden") is True
+
+
+# ── TestRLock ─────────────────────────────────────────────────────────────────
+
+class TestRLock:
+    def test_lock_is_rlock(self, tmp_path, monkeypatch):
+        """Store must use RLock, not Lock."""
+        monkeypatch.setattr(store_module, "MANUAL_FILE", tmp_path / "manual_items.json")
+        monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+        monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+        s = DataStore()
+        assert isinstance(s._lock, type(threading.RLock()))
