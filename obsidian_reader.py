@@ -78,7 +78,7 @@ def read_obsidian_items(config: dict) -> list[dict]:
 def _read_note(file_path: Path) -> tuple:
     """Read a markdown file and extract frontmatter + content."""
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             raw = f.read()
     except (OSError, UnicodeDecodeError):
         return None, None
