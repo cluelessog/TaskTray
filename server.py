@@ -36,21 +36,25 @@ except ImportError:
 _log_dir = Path(__file__).parent / "data"
 _log_dir.mkdir(parents=True, exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-    handlers=[
-        logging.StreamHandler(),
-        RotatingFileHandler(
-            _log_dir / "tasktray.log",
-            maxBytes=5 * 1024 * 1024,  # 5 MB
-            backupCount=3,
-            encoding="utf-8",
-        ),
-    ],
+_log_fmt = logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
 )
+
 log = logging.getLogger("tasktray")
+log.setLevel(logging.INFO)
+
+_stream_handler = logging.StreamHandler()
+_stream_handler.setFormatter(_log_fmt)
+log.addHandler(_stream_handler)
+
+_file_handler = RotatingFileHandler(
+    _log_dir / "tasktray.log",
+    maxBytes=5 * 1024 * 1024,  # 5 MB
+    backupCount=3,
+    encoding="utf-8",
+)
+_file_handler.setFormatter(_log_fmt)
+log.addHandler(_file_handler)
 
 # ── Config ───────────────────────────────────────────────
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
@@ -74,6 +78,32 @@ store = DataStore()
 app = Flask(__name__, static_folder="static")
 CORS(app)
 
+VALID_STATUSES = {"active", "paused", "backlog", "done"}
+VALID_PRIORITIES = {"p0", "p1", "p2", "p3"}
+ALLOWED_ITEM_FIELDS = {"title", "category", "status", "priority", "notes", "focused"}
+MAX_TITLE_LENGTH = 200
+MAX_NOTES_LENGTH = 2000
+
+
+def _validate_item_fields(data, require_title=False):
+    """Validate and filter item fields. Returns (filtered_data, error_message)."""
+    if require_title and not data.get("title"):
+        return None, "Title is required"
+    filtered = {k: v for k, v in data.items() if k in ALLOWED_ITEM_FIELDS}
+    if "title" in filtered:
+        if not isinstance(filtered["title"], str) or len(filtered["title"]) > MAX_TITLE_LENGTH:
+            return None, f"Title must be a string of max {MAX_TITLE_LENGTH} characters"
+    if "notes" in filtered:
+        if not isinstance(filtered["notes"], str) or len(filtered["notes"]) > MAX_NOTES_LENGTH:
+            return None, f"Notes must be a string of max {MAX_NOTES_LENGTH} characters"
+    if "status" in filtered and filtered["status"] not in VALID_STATUSES:
+        return None, f"Invalid status. Must be one of: {', '.join(sorted(VALID_STATUSES))}"
+    if "priority" in filtered and filtered["priority"] not in VALID_PRIORITIES:
+        return None, f"Invalid priority. Must be one of: {', '.join(sorted(VALID_PRIORITIES))}"
+    if "focused" in filtered:
+        filtered["focused"] = bool(filtered["focused"])
+    return filtered, None
+
 
 @app.route("/")
 def index():
@@ -90,9 +120,12 @@ def get_items():
 def add_item():
     """Add a manual item."""
     data = request.get_json()
-    if not data or not data.get("title"):
-        return jsonify({"error": "Title is required"}), 400
-    item = store.add_manual_item(data)
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    filtered, error = _validate_item_fields(data, require_title=True)
+    if error:
+        return jsonify({"error": error}), 400
+    item = store.add_manual_item(filtered)
     return jsonify(item), 201
 
 
@@ -102,7 +135,12 @@ def update_item(item_id):
     data = request.get_json()
     if not data:
         return jsonify({"error": "No data provided"}), 400
-    result = store.update_item(item_id, data)
+    filtered, error = _validate_item_fields(data, require_title=False)
+    if error:
+        return jsonify({"error": error}), 400
+    if not filtered:
+        return jsonify({"error": "No valid fields provided"}), 400
+    result = store.update_item(item_id, filtered)
     return jsonify(result)
 
 
