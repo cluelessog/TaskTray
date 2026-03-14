@@ -4,6 +4,7 @@ Flask API + System Tray + Background Sync
 
 Run: python server.py
 """
+from __future__ import annotations
 
 import json
 import time
@@ -11,8 +12,11 @@ import socket
 import atexit
 import threading
 import logging
+from logging.handlers import RotatingFileHandler
+from typing import Any
 import yaml
 import sys
+import webbrowser
 from pathlib import Path
 from datetime import datetime
 
@@ -34,16 +38,25 @@ except ImportError:
 _log_dir = Path(__file__).parent / "data"
 _log_dir.mkdir(parents=True, exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(_log_dir / "tasktray.log", encoding="utf-8"),
-    ],
+_log_fmt = logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
 )
+
 log = logging.getLogger("tasktray")
+log.setLevel(logging.INFO)
+
+_stream_handler = logging.StreamHandler()
+_stream_handler.setFormatter(_log_fmt)
+log.addHandler(_stream_handler)
+
+_file_handler = RotatingFileHandler(
+    _log_dir / "tasktray.log",
+    maxBytes=5 * 1024 * 1024,  # 5 MB
+    backupCount=3,
+    encoding="utf-8",
+)
+_file_handler.setFormatter(_log_fmt)
+log.addHandler(_file_handler)
 
 # ── Config ───────────────────────────────────────────────
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
@@ -67,60 +80,94 @@ store = DataStore()
 app = Flask(__name__, static_folder="static")
 CORS(app)
 
+VALID_STATUSES = {"active", "paused", "backlog", "done"}
+VALID_PRIORITIES = {"p0", "p1", "p2", "p3"}
+ALLOWED_ITEM_FIELDS = {"title", "category", "status", "priority", "notes", "focused"}
+MAX_TITLE_LENGTH = 200
+MAX_NOTES_LENGTH = 2000
+
+
+def _validate_item_fields(data: dict, require_title: bool = False) -> tuple[dict | None, str | None]:
+    """Validate and filter item fields. Returns (filtered_data, error_message)."""
+    if require_title and not data.get("title"):
+        return None, "Title is required"
+    filtered = {k: v for k, v in data.items() if k in ALLOWED_ITEM_FIELDS}
+    if "title" in filtered:
+        if not isinstance(filtered["title"], str) or len(filtered["title"]) > MAX_TITLE_LENGTH:
+            return None, f"Title must be a string of max {MAX_TITLE_LENGTH} characters"
+    if "notes" in filtered:
+        if not isinstance(filtered["notes"], str) or len(filtered["notes"]) > MAX_NOTES_LENGTH:
+            return None, f"Notes must be a string of max {MAX_NOTES_LENGTH} characters"
+    if "status" in filtered and filtered["status"] not in VALID_STATUSES:
+        return None, f"Invalid status. Must be one of: {', '.join(sorted(VALID_STATUSES))}"
+    if "priority" in filtered and filtered["priority"] not in VALID_PRIORITIES:
+        return None, f"Invalid priority. Must be one of: {', '.join(sorted(VALID_PRIORITIES))}"
+    if "focused" in filtered:
+        filtered["focused"] = bool(filtered["focused"])
+    return filtered, None
+
 
 @app.route("/")
-def index():
+def index() -> Any:
     return send_from_directory("static", "index.html")
 
 
 @app.route("/api/items", methods=["GET"])
-def get_items():
+def get_items() -> Any:
     """Get all dashboard items."""
     return jsonify(store.get_all_items_filtered())
 
 
 @app.route("/api/items", methods=["POST"])
-def add_item():
+def add_item() -> Any:
     """Add a manual item."""
     data = request.get_json()
-    if not data or not data.get("title"):
-        return jsonify({"error": "Title is required"}), 400
-    item = store.add_manual_item(data)
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    filtered, error = _validate_item_fields(data, require_title=True)
+    if error or filtered is None:
+        return jsonify({"error": error or "Invalid data"}), 400
+    item = store.add_manual_item(filtered)
     return jsonify(item), 201
 
 
 @app.route("/api/items/<item_id>", methods=["PATCH"])
-def update_item(item_id):
+def update_item(item_id: str) -> Any:
     """Update an item (manual or override)."""
     data = request.get_json()
     if not data:
         return jsonify({"error": "No data provided"}), 400
-    result = store.update_item(item_id, data)
+    filtered, error = _validate_item_fields(data, require_title=False)
+    if error:
+        return jsonify({"error": error}), 400
+    if not filtered:
+        return jsonify({"error": "No valid fields provided"}), 400
+    result = store.update_item(item_id, filtered)
     return jsonify(result)
 
 
 @app.route("/api/items/<item_id>", methods=["DELETE"])
-def delete_item(item_id):
+def delete_item(item_id: str) -> Any:
     """Delete/hide an item."""
     store.delete_item(item_id)
     return jsonify({"ok": True})
 
 
 @app.route("/api/stats", methods=["GET"])
-def get_stats():
+def get_stats() -> Any:
     """Get dashboard stats."""
     return jsonify(store.get_stats())
 
 
 @app.route("/api/sync", methods=["POST"])
-def trigger_sync():
+def trigger_sync() -> Any:
     """Manually trigger a full sync."""
     run_sync()
     return jsonify({"ok": True, "stats": store.get_stats()})
 
 
 @app.route("/api/config", methods=["GET"])
-def get_config():
+def get_config() -> Any:
     """Get current config (sanitized)."""
     return jsonify({
         "scan_dirs": config.get("scanner", {}).get("scan_dirs", []),
@@ -131,7 +178,7 @@ def get_config():
 
 # ── Sync Logic ───────────────────────────────────────────
 
-def run_sync():
+def run_sync() -> None:
     """Run disk scan + obsidian read."""
     log.info("Syncing...")
     t0 = time.time()
@@ -156,7 +203,7 @@ def run_sync():
     log.info(f"  Sync complete in {elapsed:.1f}s — {store.get_stats()['total']} total items")
 
 
-def background_sync(interval_seconds=30):
+def background_sync(interval_seconds: int = 30) -> None:
     """Background thread that periodically syncs."""
     while True:
         try:
@@ -185,7 +232,7 @@ def _wait_for_flask(host: str, port: int, timeout: float = 5.0) -> bool:
 
 # ── System Tray ──────────────────────────────────────────
 
-def run_tray():
+def run_tray() -> None:
     """Run system tray icon (Windows)."""
     try:
         import pystray
@@ -232,7 +279,7 @@ def run_tray():
 
 # ── Native Window Handlers ───────────────────────────────
 
-def _on_window_closing():
+def _on_window_closing() -> bool:
     """Intercept window close. Hide to tray unless quitting.
 
     IMPORTANT: pywebview checks `return_value is False` (identity check).
@@ -246,7 +293,7 @@ def _on_window_closing():
     return False  # Prevent window destruction
 
 
-def _run_tray_detached():
+def _run_tray_detached() -> None:
     """Run system tray icon via run_detached() for native window mode."""
     try:
         import pystray
@@ -293,7 +340,7 @@ def _run_tray_detached():
     icon.run_detached()
 
 
-def _start_services(window):
+def _start_services(window: Any) -> None:
     """Called by webview.start() on a background thread.
     Launches Flask, background sync, and pystray.
     """
@@ -329,7 +376,7 @@ def _start_services(window):
 
 # ── Main ─────────────────────────────────────────────────
 
-def main():
+def main() -> None:
     if not _HAS_WEBVIEW:
         log.warning("pywebview not installed — will open in browser. Install with: pip install pywebview")
 
@@ -345,6 +392,7 @@ def main():
             width=1200,
             height=800,
         )
+        assert window is not None, "webview.create_window() returned None"
         # Wire closing event via window.events (not a create_window kwarg)
         window.events.closing += _on_window_closing
         webview.start(func=_start_services, args=(window,))
@@ -360,7 +408,6 @@ def main():
         )
         flask_thread.start()
         log.info("Dashboard running at http://%s:%d", host, port)
-        import webbrowser
         webbrowser.open(url)
         run_tray()  # pystray on main thread (original behavior)
 

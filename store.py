@@ -4,11 +4,18 @@ Persists manual items and overrides to a local JSON file.
 """
 from __future__ import annotations
 
+import copy
 import json
+import logging
+import os
+import shutil
+import tempfile
+from typing import Any
 import threading
 from pathlib import Path
 from datetime import datetime
 
+log = logging.getLogger("tasktray")
 
 DATA_FILE = Path(__file__).parent / "data" / "items.json"
 MANUAL_FILE = Path(__file__).parent / "data" / "manual_items.json"
@@ -16,44 +23,74 @@ OVERRIDES_FILE = Path(__file__).parent / "data" / "overrides.json"
 
 
 class DataStore:
-    def __init__(self):
-        self._lock = threading.Lock()
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
         self._disk_items: list[dict] = []
         self._obsidian_items: list[dict] = []
         self._manual_items: list[dict] = []
         self._overrides: dict[str, dict] = {}  # id -> partial overrides
         self._load_persisted()
 
-    def _ensure_data_dir(self):
+    def _ensure_data_dir(self) -> None:
         DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    def _load_persisted(self):
-        self._ensure_data_dir()
-        # Load manual items
-        if MANUAL_FILE.exists():
+    def _atomic_write(self, filepath: Path, data: object) -> None:
+        """Write JSON atomically: write to temp file, then os.replace()."""
+        fd, tmp_path = tempfile.mkstemp(
+            dir=filepath.parent, suffix=".tmp", prefix=filepath.stem
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, default=str)
+            # Create backup before replacing
+            if filepath.exists():
+                backup = filepath.with_suffix(".json.bak")
+                try:
+                    shutil.copy2(filepath, backup)
+                except OSError:
+                    pass
+            os.replace(tmp_path, filepath)
+        except Exception:
             try:
-                with open(MANUAL_FILE, "r", encoding="utf-8") as f:
-                    self._manual_items = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                self._manual_items = []
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
-        # Load overrides (user edits to auto-discovered items)
-        if OVERRIDES_FILE.exists():
+    def _load_json_with_backup(self, filepath: Path, default: Any) -> Any:
+        """Load JSON from filepath, falling back to .bak on error."""
+        # Try primary file
+        if filepath.exists():
             try:
-                with open(OVERRIDES_FILE, "r", encoding="utf-8") as f:
-                    self._overrides = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                self._overrides = {}
+                with open(filepath, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError) as e:
+                log.warning("Failed to load %s: %s; trying backup", filepath, e)
 
-    def _save_manual(self):
-        self._ensure_data_dir()
-        with open(MANUAL_FILE, "w", encoding="utf-8") as f:
-            json.dump(self._manual_items, f, indent=2, default=str)
+        # Try backup file
+        backup = filepath.with_suffix(".json.bak")
+        if backup.exists():
+            try:
+                with open(backup, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError) as e:
+                log.warning("Failed to load backup %s: %s; using empty default", backup, e)
 
-    def _save_overrides(self):
+        # Both corrupted or missing — return fresh empty of same type
+        return type(default)()
+
+    def _load_persisted(self) -> None:
         self._ensure_data_dir()
-        with open(OVERRIDES_FILE, "w", encoding="utf-8") as f:
-            json.dump(self._overrides, f, indent=2, default=str)
+        self._manual_items = self._load_json_with_backup(MANUAL_FILE, [])
+        self._overrides = self._load_json_with_backup(OVERRIDES_FILE, {})
+
+    def _save_manual(self) -> None:
+        self._ensure_data_dir()
+        self._atomic_write(MANUAL_FILE, self._manual_items)
+
+    def _save_overrides(self) -> None:
+        self._ensure_data_dir()
+        self._atomic_write(OVERRIDES_FILE, self._overrides)
 
     def update_disk_items(self, items: list[dict]):
         with self._lock:
@@ -88,7 +125,7 @@ class DataStore:
                     all_items.append(merged)
                     seen_ids.add(item["id"])
 
-            return all_items
+            return copy.deepcopy(all_items)
 
     def add_manual_item(self, item: dict) -> dict:
         """Add a new manual item."""
@@ -102,7 +139,7 @@ class DataStore:
             self._save_manual()
             return item
 
-    def update_item(self, item_id: str, updates: dict):
+    def update_item(self, item_id: str, updates: dict) -> dict:
         """Update an item. Manual items are updated directly; others get overrides."""
         with self._lock:
             # Check if it's a manual item
@@ -117,16 +154,19 @@ class DataStore:
             self._save_overrides()
             return updates
 
-    def delete_item(self, item_id: str):
+    def delete_item(self, item_id: str) -> None:
         """Delete a manual item or hide an auto-discovered item."""
         with self._lock:
-            # Remove from manual
-            self._manual_items = [i for i in self._manual_items if i["id"] != item_id]
-            self._save_manual()
+            # Check if item was in manual items before removal
+            was_manual = any(i["id"] == item_id for i in self._manual_items)
 
-            # For auto-discovered items, mark as hidden via override
-            self._overrides.setdefault(item_id, {})["_hidden"] = True
-            self._save_overrides()
+            if was_manual:
+                self._manual_items = [i for i in self._manual_items if i["id"] != item_id]
+                self._save_manual()
+            else:
+                # For auto-discovered items, mark as hidden via override
+                self._overrides.setdefault(item_id, {})["_hidden"] = True
+                self._save_overrides()
 
     def get_all_items_filtered(self) -> list[dict]:
         """Get all items excluding hidden ones."""
