@@ -129,6 +129,29 @@ def test_delete_item_returns_200(flask_client):
     assert r.get_json()["ok"] is True
 
 
+# ── Health check tests ────────────────────────────────────────────────────────
+
+def test_health_endpoint_returns_200(flask_client):
+    r = flask_client.get("/api/health")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["status"] == "ok"
+    assert "uptime_seconds" in data
+    assert "last_sync" in data
+    assert "item_count" in data
+    assert isinstance(data["uptime_seconds"], (int, float))
+    assert data["uptime_seconds"] >= 0
+
+
+def test_health_endpoint_updates_after_sync(flask_client):
+    import server as s
+    old_sync = s._last_sync_time
+    s._last_sync_time = "2026-01-01T00:00:00"
+    r = flask_client.get("/api/health")
+    assert r.get_json()["last_sync"] == "2026-01-01T00:00:00"
+    s._last_sync_time = old_sync
+
+
 def test_index_serves_html(flask_client, tmp_path):
     import server as server_module
     # Point Flask static folder to a temp dir with a fake index.html

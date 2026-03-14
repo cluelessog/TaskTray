@@ -72,6 +72,8 @@ config = load_config()
 # ── Window State ─────────────────────────────────────────
 _webview_window: "webview.Window | None" = None  # type: ignore[name-defined]
 _is_quitting: bool = False
+_server_start_time: float = time.time()
+_last_sync_time: str | None = None
 
 # ── Data Store ───────────────────────────────────────────
 store = DataStore()
@@ -153,6 +155,17 @@ def delete_item(item_id: str) -> Any:
     return jsonify({"ok": True})
 
 
+@app.route("/api/health", methods=["GET"])
+def health_check() -> Any:
+    """Health check endpoint for monitoring."""
+    return jsonify({
+        "status": "ok",
+        "uptime_seconds": round(time.time() - _server_start_time, 1),
+        "last_sync": _last_sync_time,
+        "item_count": store.get_stats()["total"],
+    })
+
+
 @app.route("/api/stats", methods=["GET"])
 def get_stats() -> Any:
     """Get dashboard stats."""
@@ -180,6 +193,7 @@ def get_config() -> Any:
 
 def run_sync() -> None:
     """Run disk scan + obsidian read."""
+    global _last_sync_time
     log.info("Syncing...")
     t0 = time.time()
 
@@ -200,6 +214,7 @@ def run_sync() -> None:
         log.error(f"  Obsidian read failed: {e}")
 
     elapsed = time.time() - t0
+    _last_sync_time = datetime.now().isoformat()
     log.info(f"  Sync complete in {elapsed:.1f}s — {store.get_stats()['total']} total items")
 
 
