@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>TaskTray</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg-root: #0b1120;
-  --bg-card: #111827;
+  --bg-root: #080d14;
+  --bg-card: #0c1520;
   --bg-input: #0f172a;
   --border: #1e293b;
   --border-hover: #334155;
@@ -16,8 +16,8 @@
   --text-muted: #94a3b8;
   --text-dim: #64748b;
   --text-faint: #475569;
-  --cyan: #22d3ee;
-  --cyan-bg: rgba(34,211,238,0.12);
+  --cyan: #00e5cc;
+  --cyan-bg: rgba(0,229,204,0.12);
   --green: #34d399;
   --green-bg: rgba(52,211,153,0.12);
   --yellow: #fbbf24;
@@ -29,8 +29,8 @@
   --pink: #f472b6;
   --pink-bg: rgba(244,114,182,0.12);
   --red: #ef4444;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
-  --font-sans: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Code', 'Consolas', monospace;
+  --font-sans: 'Outfit', 'Segoe UI', system-ui, sans-serif;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -82,7 +82,7 @@ body {
 .source-badge {
   padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border);
 }
-.source-badge.disk { color: var(--cyan); border-color: rgba(34,211,238,0.3); }
+.source-badge.disk { color: var(--cyan); border-color: rgba(0,229,204,0.3); }
 .source-badge.obsidian { color: var(--purple); border-color: rgba(167,139,250,0.3); }
 .source-badge.manual { color: var(--green); border-color: rgba(52,211,153,0.3); }
 
@@ -125,14 +125,14 @@ body {
   border-radius: 6px; padding: 6px 16px; font-size: 12px; font-family: var(--font-mono);
   cursor: pointer; transition: all 0.15s;
 }
-.view-tab.active { background: var(--cyan-bg); color: var(--cyan); border-color: rgba(34,211,238,0.3); }
+.view-tab.active { background: var(--cyan-bg); color: var(--cyan); border-color: rgba(0,229,204,0.3); }
 .filter-chips { display: flex; gap: 4px; flex-wrap: wrap; }
 .filter-chip {
   background: transparent; border: 1px solid var(--border); color: var(--text-dim);
   border-radius: 20px; padding: 4px 12px; font-size: 11px; font-family: var(--font-mono);
   cursor: pointer; transition: all 0.15s;
 }
-.filter-chip.active { background: var(--cyan-bg); color: var(--cyan); border-color: rgba(34,211,238,0.3); }
+.filter-chip.active { background: var(--cyan-bg); color: var(--cyan); border-color: rgba(0,229,204,0.3); }
 
 /* ── Content ───────────────────────────────── */
 .content { padding: 0 24px 100px; }
@@ -231,7 +231,7 @@ body {
 .fab {
   position: fixed; bottom: 24px; right: 24px; background: var(--cyan); color: var(--bg-root);
   border: none; border-radius: 12px; padding: 12px 20px; font-weight: 700; font-size: 14px;
-  cursor: pointer; font-family: var(--font-mono); box-shadow: 0 4px 24px rgba(34,211,238,0.3);
+  cursor: pointer; font-family: var(--font-mono); box-shadow: 0 4px 24px rgba(0,229,204,0.3);
   z-index: 40; transition: transform 0.1s;
 }
 .fab:active { transform: scale(0.96); }
@@ -289,7 +289,7 @@ body {
   position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
   background: var(--bg-card); color: var(--cyan); padding: 10px 24px; border-radius: 8px;
   font-size: 12px; font-family: var(--font-mono); z-index: 999;
-  border: 1px solid rgba(34,211,238,0.2); box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  border: 1px solid rgba(0,229,204,0.2); box-shadow: 0 4px 24px rgba(0,0,0,0.4);
   animation: toastIn 0.2s ease;
 }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -316,7 +316,7 @@ body {
 const API = '';  // same origin
 
 const CATEGORIES = [
-  { id: 'dev', label: 'Dev', color: '#22d3ee', bg: 'rgba(34,211,238,0.12)' },
+  { id: 'dev', label: 'Dev', color: '#00e5cc', bg: 'rgba(0,229,204,0.12)' },
   { id: 'trading', label: 'Trading', color: '#f59e42', bg: 'rgba(245,158,66,0.12)' },
   { id: 'teaching', label: 'Teaching', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
   { id: 'ideas', label: 'Ideas', color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
@@ -324,7 +324,7 @@ const CATEGORIES = [
   { id: 'learning', label: 'Learning', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
 ];
 const STATUS_OPTS = [
-  { id: 'active', label: 'Active', color: '#22d3ee' },
+  { id: 'active', label: 'Active', color: '#00e5cc' },
   { id: 'paused', label: 'Paused', color: '#fbbf24' },
   { id: 'backlog', label: 'Backlog', color: '#94a3b8' },
   { id: 'done', label: 'Done', color: '#34d399' },
@@ -335,7 +335,7 @@ const PRIORITY_OPTS = [
   { id: 'p2', label: 'P2', color: '#fbbf24' },
   { id: 'p3', label: 'P3', color: '#94a3b8' },
 ];
-const SOURCE_LABELS = { disk: '💽 disk', obsidian: '📝 obsidian', manual: '✏️ manual' };
+const SOURCE_LABELS = { disk: '⬡ disk', obsidian: '◈ obsidian', manual: '✎ manual' };
 
 function getCat(id) { return CATEGORIES.find(c => c.id === id) || CATEGORIES[0]; }
 function getStatus(id) { return STATUS_OPTS.find(s => s.id === id) || STATUS_OPTS[2]; }

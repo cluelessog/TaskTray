@@ -1,0 +1,136 @@
+"""Tests for Phase 2 Design Alignment — read index.html as string, assert CSS values."""
+import pathlib
+
+import pytest
+
+HTML_PATH = pathlib.Path(__file__).resolve().parent.parent / "static" / "index.html"
+
+
+@pytest.fixture
+def html():
+    return HTML_PATH.read_text(encoding="utf-8")
+
+
+# ── Color palette ──
+class TestColorPalette:
+    def test_bg_root_updated(self, html):
+        assert "--bg-root: #080d14" in html
+        assert "#0b1120" not in html  # old value fully replaced
+
+    def test_bg_card_updated(self, html):
+        assert "--bg-card: #0c1520" in html
+        assert "#111827" not in html  # old value fully replaced
+
+    def test_cyan_updated(self, html):
+        assert "--cyan: #00e5cc" in html
+        assert "#22d3ee" not in html  # old value fully replaced
+
+    def test_cyan_bg_updated(self, html):
+        assert "rgba(0,229,204,0.12)" in html
+        assert "rgba(34,211,238,0.12)" not in html
+
+    def test_no_old_cyan_rgba(self, html):
+        """No leftover references to old cyan rgba anywhere."""
+        assert "rgba(34,211,238," not in html
+
+
+# ── Typography ──
+class TestTypography:
+    def test_font_mono_ibm_plex(self, html):
+        assert "IBM Plex Mono" in html
+        assert "JetBrains Mono" not in html
+
+    def test_font_sans_outfit(self, html):
+        assert "Outfit" in html
+        assert "DM Sans" not in html
+
+    def test_google_fonts_link(self, html):
+        assert "family=IBM+Plex+Mono" in html
+        assert "family=Outfit" in html
+
+
+# ── Source indicators ──
+class TestSourceIndicators:
+    def test_disk_geometric(self, html):
+        assert "\u2b21 disk" in html
+
+    def test_obsidian_geometric(self, html):
+        assert "\u25c8 obsidian" in html
+
+    def test_manual_geometric(self, html):
+        assert "\u270e manual" in html
+
+    def test_no_emoji_sources(self, html):
+        """Old emoji indicators must be gone."""
+        assert "\U0001f4bd" not in html
+        assert "\U0001f4dd" not in html
+        assert "\u270f\ufe0f" not in html
+
+
+# ── Contrast ratio ──
+class TestContrastRatio:
+    @staticmethod
+    def _relative_luminance(hex_color: str) -> float:
+        """WCAG 2.1 relative luminance."""
+        hex_color = hex_color.lstrip("#")
+        r, g, b = (int(hex_color[i : i + 2], 16) / 255 for i in (0, 2, 4))
+
+        def linearize(c):
+            return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+        return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b)
+
+    @staticmethod
+    def _contrast_ratio(c1: str, c2: str) -> float:
+        l1 = TestContrastRatio._relative_luminance(c1)
+        l2 = TestContrastRatio._relative_luminance(c2)
+        lighter, darker = max(l1, l2), min(l1, l2)
+        return (lighter + 0.05) / (darker + 0.05)
+
+    def test_text_on_card_bg(self):
+        """Primary text (#e2e8f0) on card bg (#0c1520) >= 4.5:1."""
+        assert self._contrast_ratio("#e2e8f0", "#0c1520") >= 4.5
+
+    def test_muted_text_on_card_bg(self):
+        """Muted text (#94a3b8) on card bg (#0c1520) >= 4.5:1."""
+        assert self._contrast_ratio("#94a3b8", "#0c1520") >= 4.5
+
+    def test_cyan_on_root_bg(self):
+        """Cyan accent (#00e5cc) on root bg (#080d14) >= 3:1 (large text / UI elements)."""
+        assert self._contrast_ratio("#00e5cc", "#080d14") >= 3.0
+
+    def test_text_on_root_bg(self):
+        """Primary text (#e2e8f0) on root bg (#080d14) >= 4.5:1."""
+        assert self._contrast_ratio("#e2e8f0", "#080d14") >= 4.5
+
+    def test_cyan_on_card_bg(self):
+        """Cyan accent (#00e5cc) on card bg (#0c1520) >= 3:1 (UI elements)."""
+        assert self._contrast_ratio("#00e5cc", "#0c1520") >= 3.0
+
+
+# ── Grid background ──
+class TestGridBackground:
+    def test_grid_bg_element(self, html):
+        """Grid background div exists in HTML."""
+        assert 'class="grid-bg"' in html
+
+    def test_grid_css_class(self, html):
+        """Grid CSS uses repeating-linear-gradient."""
+        assert "repeating-linear-gradient" in html
+
+    def test_grid_animation_transform(self, html):
+        """Animation uses transform (GPU-friendly, no layout thrashing)."""
+        assert "gridDrift" in html
+        assert "transform: translate(" in html
+
+    def test_grid_disable_class(self, html):
+        """Grid can be disabled via .no-grid class."""
+        assert ".no-grid .grid-bg { display: none" in html
+
+    def test_grid_pointer_events_none(self, html):
+        """Grid does not block clicks."""
+        assert "pointer-events: none" in html
+
+    def test_grid_rgba_uses_new_cyan(self, html):
+        """Grid lines use the new cyan color."""
+        assert "rgba(0,229,204,0.04)" in html
