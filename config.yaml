@@ -33,6 +33,9 @@ scanner:
     - "docker-compose.yml"
     - "tauri.conf.json"
 
+  # Seconds to wait for a single directory scan before skipping (useful for NAS/network drives)
+  timeout_seconds: 10
+
   # Directories to skip during scanning
   ignore_dirs:
     - "node_modules"

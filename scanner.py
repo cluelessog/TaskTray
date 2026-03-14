@@ -6,9 +6,59 @@ from __future__ import annotations
 import os
 import json
 import hashlib
+import logging
+import threading
 import time
 from pathlib import Path
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+def _scan_with_timeout(
+    base: Path,
+    max_depth: int,
+    markers: set,
+    ignore_dirs: set,
+    timeout_seconds: int,
+) -> list[dict]:
+    """Scan a single base directory with a timeout. Returns projects found or empty list on timeout."""
+    results: list[dict] = []
+
+    def _do_scan():
+        seen_paths: set[str] = set()
+        for root, dirs, files in os.walk(base):
+            root_path = Path(root)
+            depth = len(root_path.relative_to(base).parts)
+
+            if depth > max_depth:
+                dirs.clear()
+                continue
+
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+
+            entries = set(dirs + files)
+            found_markers = entries & markers
+
+            if found_markers and str(root_path) not in seen_paths:
+                seen_paths.add(str(root_path))
+                project = _build_project_info(root_path, found_markers)
+                results.append(project)
+                dirs.clear()
+
+    thread = threading.Thread(target=_do_scan, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_seconds)
+
+    if thread.is_alive():
+        logger.warning(
+            "Scan of '%s' exceeded timeout of %ds — skipping directory.",
+            base,
+            timeout_seconds,
+        )
+        return []
+
+    return results
 
 
 def scan_for_projects(config: dict) -> list[dict]:
@@ -21,36 +71,17 @@ def scan_for_projects(config: dict) -> list[dict]:
     max_depth = scanner_cfg.get("max_depth", 3)
     markers = set(scanner_cfg.get("markers", [".git"]))
     ignore_dirs = set(scanner_cfg.get("ignore_dirs", []))
+    timeout_seconds = scanner_cfg.get("timeout_seconds", 10)
 
     projects = []
-    seen_paths = set()
 
     for base_dir in scan_dirs:
         base = Path(base_dir).expanduser().resolve()
         if not base.exists():
             continue
 
-        for root, dirs, files in os.walk(base):
-            root_path = Path(root)
-            depth = len(root_path.relative_to(base).parts)
-
-            if depth > max_depth:
-                dirs.clear()
-                continue
-
-            # Skip ignored directories
-            dirs[:] = [d for d in dirs if d not in ignore_dirs]
-
-            # Check if this directory contains any project marker
-            entries = set(dirs + files)
-            found_markers = entries & markers
-
-            if found_markers and str(root_path) not in seen_paths:
-                seen_paths.add(str(root_path))
-                project = _build_project_info(root_path, found_markers)
-                projects.append(project)
-                # Don't recurse into this project's subdirs
-                dirs.clear()
+        found = _scan_with_timeout(base, max_depth, markers, ignore_dirs, timeout_seconds)
+        projects.extend(found)
 
     return projects
 
