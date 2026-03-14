@@ -21,6 +21,8 @@ DATA_FILE = Path(__file__).parent / "data" / "items.json"
 MANUAL_FILE = Path(__file__).parent / "data" / "manual_items.json"
 OVERRIDES_FILE = Path(__file__).parent / "data" / "overrides.json"
 
+CURRENT_SCHEMA_VERSION = 1
+
 
 class DataStore:
     def __init__(self) -> None:
@@ -29,6 +31,7 @@ class DataStore:
         self._obsidian_items: list[dict] = []
         self._manual_items: list[dict] = []
         self._overrides: dict[str, dict] = {}  # id -> partial overrides
+        self._read_only = False
         self._load_persisted()
 
     def _ensure_data_dir(self) -> None:
@@ -79,18 +82,57 @@ class DataStore:
         # Both corrupted or missing — return fresh empty of same type
         return type(default)()
 
+    def _migrate_if_needed(self, data: Any, filepath: Path) -> Any:
+        """Normalise data to versioned dict format and check schema version.
+
+        Returns the normalised data dict.  Sets self._read_only = True if the
+        file was written by a newer version of the schema.
+        """
+        # v0 legacy: plain list -> wrap it
+        if isinstance(data, list):
+            data = {"_schema_version": 0, "items": data}
+
+        version = data.get("_schema_version", 0)
+
+        if version > CURRENT_SCHEMA_VERSION:
+            log.error(
+                "File %s has schema version %d > current %d; entering read-only mode",
+                filepath, version, CURRENT_SCHEMA_VERSION,
+            )
+            self._read_only = True
+            return data
+
+        # v0 -> v1: identity migration — just bump the version number
+        if version < CURRENT_SCHEMA_VERSION:
+            data["_schema_version"] = CURRENT_SCHEMA_VERSION
+
+        return data
+
     def _load_persisted(self) -> None:
         self._ensure_data_dir()
-        self._manual_items = self._load_json_with_backup(MANUAL_FILE, [])
-        self._overrides = self._load_json_with_backup(OVERRIDES_FILE, {})
+
+        # --- manual items ---
+        raw_manual = self._load_json_with_backup(MANUAL_FILE, [])
+        manual_data = self._migrate_if_needed(raw_manual, MANUAL_FILE)
+        self._manual_items = manual_data.get("items", [])
+
+        # --- overrides ---
+        raw_overrides = self._load_json_with_backup(OVERRIDES_FILE, {})
+        overrides_data = self._migrate_if_needed(raw_overrides, OVERRIDES_FILE)
+        # Strip the version key before storing overrides
+        self._overrides = {k: v for k, v in overrides_data.items() if k != "_schema_version"}
 
     def _save_manual(self) -> None:
+        if self._read_only:
+            raise RuntimeError("DataStore is read-only due to schema version mismatch")
         self._ensure_data_dir()
-        self._atomic_write(MANUAL_FILE, self._manual_items)
+        self._atomic_write(MANUAL_FILE, {"_schema_version": CURRENT_SCHEMA_VERSION, "items": self._manual_items})
 
     def _save_overrides(self) -> None:
+        if self._read_only:
+            raise RuntimeError("DataStore is read-only due to schema version mismatch")
         self._ensure_data_dir()
-        self._atomic_write(OVERRIDES_FILE, self._overrides)
+        self._atomic_write(OVERRIDES_FILE, {"_schema_version": CURRENT_SCHEMA_VERSION, **self._overrides})
 
     def update_disk_items(self, items: list[dict]):
         with self._lock:

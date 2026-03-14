@@ -113,7 +113,7 @@ def test_add_manual_item_persists_to_disk(isolated_store, tmp_path, monkeypatch)
     s.add_manual_item({"title": "Persist me"})
     manual_file = tmp_path / "manual_items.json"
     assert manual_file.exists()
-    saved = json.loads(manual_file.read_text())
+    saved = json.loads(manual_file.read_text()).get("items", [])
     assert any(i["title"] == "Persist me" for i in saved)
 
 
@@ -139,7 +139,7 @@ def test_update_item_persists_manual_update(isolated_store, tmp_path, monkeypatc
     s = DataStore()
     added = s.add_manual_item({"title": "Orig"})
     s.update_item(added["id"], {"status": "done"})
-    saved = json.loads((tmp_path / "manual_items.json").read_text())
+    saved = json.loads((tmp_path / "manual_items.json").read_text()).get("items", [])
     assert saved[0]["status"] == "done"
 
 
@@ -319,7 +319,7 @@ class TestAtomicWrites:
         s.add_manual_item({"title": "Atomic Item"})
         manual_file = tmp_path / "manual_items.json"
         assert manual_file.exists()
-        data = json.loads(manual_file.read_text())
+        data = json.loads(manual_file.read_text()).get("items", [])
         assert isinstance(data, list)
         assert any(i["title"] == "Atomic Item" for i in data)
 
@@ -426,3 +426,60 @@ class TestRLock:
         monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
         s = DataStore()
         assert isinstance(s._lock, type(threading.RLock()))
+
+
+# ── JSON Schema Versioning ─────────────────────────────────────────────────────
+
+def test_schema_version_saved_in_manual_items(tmp_path, monkeypatch):
+    """manual_items.json must contain _schema_version: 1 after saving."""
+    manual_file = tmp_path / "manual_items.json"
+    monkeypatch.setattr(store_module, "MANUAL_FILE", manual_file)
+    monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+    monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+    s = DataStore()
+    s.add_manual_item({"title": "Versioned Task"})
+    raw = json.loads(manual_file.read_text())
+    assert raw.get("_schema_version") == 1
+
+
+def test_schema_version_saved_in_overrides(tmp_path, monkeypatch):
+    """overrides.json must contain _schema_version: 1 after saving."""
+    overrides_file = tmp_path / "overrides.json"
+    monkeypatch.setattr(store_module, "MANUAL_FILE", tmp_path / "manual_items.json")
+    monkeypatch.setattr(store_module, "OVERRIDES_FILE", overrides_file)
+    monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+    s = DataStore()
+    s.update_disk_items([{"id": "disk_v", "title": "Disk", "source": "disk"}])
+    s.update_item("disk_v", {"status": "done"})
+    raw = json.loads(overrides_file.read_text())
+    assert raw.get("_schema_version") == 1
+
+
+def test_versionless_file_migrated(tmp_path, monkeypatch):
+    """Old plain-list manual_items.json (v0) must load and re-save with version."""
+    manual_file = tmp_path / "manual_items.json"
+    manual_file.write_text(json.dumps([{"id": "old_1", "title": "Legacy", "source": "manual"}]))
+    monkeypatch.setattr(store_module, "MANUAL_FILE", manual_file)
+    monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+    monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+    s = DataStore()
+    items = s.get_all_items()
+    assert len(items) == 1
+    assert items[0]["title"] == "Legacy"
+    # After adding an item, file should be re-saved with version
+    s.add_manual_item({"title": "New Item"})
+    raw = json.loads(manual_file.read_text())
+    assert raw.get("_schema_version") == 1
+
+
+def test_downgrade_refusal_read_only(tmp_path, monkeypatch):
+    """A file with _schema_version > CURRENT_SCHEMA_VERSION causes read-only mode; writes raise RuntimeError."""
+    manual_file = tmp_path / "manual_items.json"
+    manual_file.write_text(json.dumps({"_schema_version": 999, "items": []}))
+    monkeypatch.setattr(store_module, "MANUAL_FILE", manual_file)
+    monkeypatch.setattr(store_module, "OVERRIDES_FILE", tmp_path / "overrides.json")
+    monkeypatch.setattr(store_module, "DATA_FILE", tmp_path / "items.json")
+    s = DataStore()
+    assert s._read_only is True
+    with pytest.raises(RuntimeError):
+        s.add_manual_item({"title": "Should Fail"})
