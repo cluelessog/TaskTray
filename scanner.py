@@ -227,7 +227,7 @@ def _build_project_info(path: Path, markers: set) -> dict:
         "source": "disk",
         "type": project_type,
         "category": category,
-        "status": "active",
+        "status": "backlog",
         "priority": "p2",
         "notes": description or f"{project_type} project at {path}",
         "last_modified": last_modified,
