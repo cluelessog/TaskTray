@@ -169,6 +169,14 @@ class DataStore:
 
             return copy.deepcopy(all_items)
 
+    def has_status_override(self, item_id: str) -> bool:
+        """Check if an item has a manual status override."""
+        with self._lock:
+            override = self._overrides.get(item_id, {})
+            if isinstance(override, dict):
+                return "status" in override
+            return False
+
     def add_manual_item(self, item: dict) -> dict:
         """Add a new manual item."""
         with self._lock:
@@ -211,8 +219,13 @@ class DataStore:
                 self._save_overrides()
 
     def get_all_items_filtered(self) -> list[dict]:
-        """Get all items excluding hidden ones."""
-        return [i for i in self.get_all_items() if not i.get("_hidden")]
+        """Get all items excluding hidden ones. Strips internal-only fields."""
+        result = []
+        for i in self.get_all_items():
+            if not i.get("_hidden"):
+                i.pop("has_recent_activity", None)
+                result.append(i)
+        return result
 
     def get_stats(self) -> dict:
         items = self.get_all_items_filtered()

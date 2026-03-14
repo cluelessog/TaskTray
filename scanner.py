@@ -15,6 +15,37 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+def detect_recent_activity(path: Path, threshold_minutes: int) -> bool:
+    """Check if a project directory has recently modified files (depth 1 + .git/index).
+
+    Returns False if threshold_minutes <= 0 (disabled) or on any error.
+    """
+    if threshold_minutes <= 0:
+        return False
+    cutoff = time.time() - (threshold_minutes * 60)
+    try:
+        # Check top-level files
+        for entry in path.iterdir():
+            if entry.is_file():
+                try:
+                    if entry.stat().st_mtime > cutoff:
+                        return True
+                except OSError:
+                    continue
+        # Check .git/index if exists
+        git_index = path / ".git" / "index"
+        if git_index.exists():
+            try:
+                if git_index.stat().st_mtime > cutoff:
+                    return True
+            except OSError:
+                pass
+    except OSError:
+        logger.debug("Cannot read directory %s for activity detection", path)
+        return False
+    return False
+
+
 class ScanCache:
     """Cache for scan results, keyed by directory path with NTFS-safe staleness detection."""
 
@@ -100,6 +131,7 @@ def _scan_with_timeout(
     markers: set,
     ignore_dirs: set,
     timeout_seconds: int,
+    activity_threshold_minutes: int = 30,
 ) -> list[dict]:
     """Scan a single base directory with a timeout. Returns projects found or empty list on timeout."""
     results: list[dict] = []
@@ -121,7 +153,7 @@ def _scan_with_timeout(
 
             if found_markers and str(root_path) not in seen_paths:
                 seen_paths.add(str(root_path))
-                project = _build_project_info(root_path, found_markers)
+                project = _build_project_info(root_path, found_markers, activity_threshold_minutes)
                 results.append(project)
                 dirs.clear()
 
@@ -160,6 +192,7 @@ def scan_for_projects(
     markers = set(scanner_cfg.get("markers", [".git"]))
     ignore_dirs = set(scanner_cfg.get("ignore_dirs", []))
     timeout_seconds = scanner_cfg.get("timeout_seconds", 10)
+    activity_threshold_minutes = scanner_cfg.get("activity_threshold_minutes", 30)
 
     cache = _cache if _cache is not None else _get_module_cache()
 
@@ -194,7 +227,7 @@ def scan_for_projects(
                 continue
 
         # Cache miss or force_refresh: perform actual scan
-        found = _scan_with_timeout(base, max_depth, markers, ignore_dirs, timeout_seconds)
+        found = _scan_with_timeout(base, max_depth, markers, ignore_dirs, timeout_seconds, activity_threshold_minutes)
         staleness_key = cache._compute_staleness_key(base)
         cache.update(dir_key, staleness_key, found)
         projects.extend(found)
@@ -202,7 +235,7 @@ def scan_for_projects(
     return projects
 
 
-def _build_project_info(path: Path, markers: set) -> dict:
+def _build_project_info(path: Path, markers: set, activity_threshold_minutes: int = 30) -> dict:
     """Build a project info dict from a discovered path."""
     # Detect project type from markers
     project_type = _detect_type(markers, path)
@@ -234,6 +267,7 @@ def _build_project_info(path: Path, markers: set) -> dict:
         "markers": list(markers),
         "focused": False,
         "created_at": datetime.now().isoformat(),
+        "has_recent_activity": detect_recent_activity(path, activity_threshold_minutes),
     }
 
 

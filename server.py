@@ -202,6 +202,18 @@ def run_sync(force_refresh: bool = False) -> None:
         disk_items = scan_for_projects(config, force_refresh=force_refresh)
         store.update_disk_items(disk_items)
         log.info(f"  Disk: found {len(disk_items)} projects")
+        # Auto-promote backlog items with recent activity
+        activity_threshold = config.get("scanner", {}).get("activity_threshold_minutes", 30)
+        if activity_threshold > 0:
+            promoted_count = 0
+            for item in disk_items:
+                if (item.get("has_recent_activity")
+                        and item.get("status") == "backlog"
+                        and not store.has_status_override(item["id"])):
+                    store.update_item(item["id"], {"status": "active"})
+                    promoted_count += 1
+            if promoted_count:
+                log.info(f"  Auto-promoted {promoted_count} projects from backlog to active")
     except Exception as e:
         log.error(f"  Disk scan failed: {e}")
 
