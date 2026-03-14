@@ -43,6 +43,33 @@ body {
   overflow-x: hidden;
 }
 
+/* ── Grid Background ──────────────────────── */
+.grid-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(0,229,204,0.04) 0px,
+      transparent 1px,
+      transparent 60px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(0,229,204,0.04) 0px,
+      transparent 1px,
+      transparent 60px
+    );
+  animation: gridDrift 20s linear infinite;
+}
+@keyframes gridDrift {
+  from { transform: translate(0, 0); }
+  to { transform: translate(60px, 60px); }
+}
+.no-grid .grid-bg { display: none; }
+
 /* ── Scrollbar ─────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -89,6 +116,7 @@ body {
 /* ── Quick Add ─────────────────────────────── */
 .quick-add {
   padding: 12px 24px; border-bottom: 1px solid var(--border);
+  position: relative; z-index: 1;
 }
 .quick-add-inner {
   display: flex; gap: 8px; align-items: center; background: var(--bg-card);
@@ -118,6 +146,7 @@ body {
 .nav {
   display: flex; justify-content: space-between; align-items: center;
   padding: 12px 24px; gap: 12px; flex-wrap: wrap;
+  position: relative; z-index: 1;
 }
 .view-tabs { display: flex; gap: 4px; }
 .view-tab {
@@ -135,7 +164,7 @@ body {
 .filter-chip.active { background: var(--cyan-bg); color: var(--cyan); border-color: rgba(0,229,204,0.3); }
 
 /* ── Content ───────────────────────────────── */
-.content { padding: 0 24px 100px; }
+.content { padding: 0 24px 100px; position: relative; z-index: 1; }
 .section-hint { color: var(--text-dim); font-size: 12px; margin-bottom: 14px; font-family: var(--font-mono); }
 .empty { color: var(--text-faint); text-align: center; padding: 60px 20px; font-family: var(--font-mono); font-size: 13px; }
 
@@ -214,6 +243,7 @@ body {
 /* ── Done Section ──────────────────────────── */
 .done-section {
   margin: 20px 24px 0; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card);
+  position: relative; z-index: 1;
 }
 .done-section summary {
   padding: 10px 14px; cursor: pointer; font-size: 12px; color: var(--text-dim);
@@ -310,6 +340,7 @@ body {
 </head>
 <body>
 
+<div class="grid-bg"></div>
 <div id="app"></div>
 
 <script>
