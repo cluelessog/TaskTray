@@ -113,14 +113,22 @@ class DataStore:
 
         # --- manual items ---
         raw_manual = self._load_json_with_backup(MANUAL_FILE, [])
+        manual_version_before = raw_manual.get("_schema_version", 0) if isinstance(raw_manual, dict) else 0
         manual_data = self._migrate_if_needed(raw_manual, MANUAL_FILE)
         self._manual_items = manual_data.get("items", [])
+        # Persist immediately if version was bumped (v0 → v1)
+        if manual_data.get("_schema_version", 0) > manual_version_before and not self._read_only:
+            self._save_manual()
 
         # --- overrides ---
         raw_overrides = self._load_json_with_backup(OVERRIDES_FILE, {})
+        overrides_version_before = raw_overrides.get("_schema_version", 0) if isinstance(raw_overrides, dict) else 0
         overrides_data = self._migrate_if_needed(raw_overrides, OVERRIDES_FILE)
         # Strip the version key before storing overrides
         self._overrides = {k: v for k, v in overrides_data.items() if k != "_schema_version"}
+        # Persist immediately if version was bumped (v0 → v1)
+        if overrides_data.get("_schema_version", 0) > overrides_version_before and not self._read_only:
+            self._save_overrides()
 
     def _save_manual(self) -> None:
         if self._read_only:
@@ -176,6 +184,11 @@ class DataStore:
             if isinstance(override, dict):
                 return "status" in override
             return False
+
+    def is_manual_item(self, item_id: str) -> bool:
+        """Check if an item exists as a manual item (prevents auto-promote collisions)."""
+        with self._lock:
+            return any(i["id"] == item_id for i in self._manual_items)
 
     def add_manual_item(self, item: dict) -> dict:
         """Add a new manual item."""

@@ -209,7 +209,8 @@ def run_sync(force_refresh: bool = False) -> None:
             for item in disk_items:
                 if (item.get("has_recent_activity")
                         and item.get("status") == "backlog"
-                        and not store.has_status_override(item["id"])):
+                        and not store.has_status_override(item["id"])
+                        and not store.is_manual_item(item["id"])):
                     store.update_item(item["id"], {"status": "active"})
                     promoted_count += 1
             if promoted_count:

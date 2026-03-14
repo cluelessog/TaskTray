@@ -47,18 +47,26 @@ def detect_recent_activity(path: Path, threshold_minutes: int) -> bool:
 
 
 class ScanCache:
-    """Cache for scan results, keyed by directory path with NTFS-safe staleness detection."""
+    """Cache for scan results, keyed by directory path with NTFS-safe staleness detection.
+
+    Thread-safe: all public methods are protected by a lock.
+    """
 
     def __init__(self, cache_path: Path):
         self._cache_path = cache_path
+        self._lock = threading.Lock()
         self._cache: dict = {}  # dir_path -> {"staleness_key": str, "projects": list, "timestamp": float}
+        self._config_hash: str | None = None  # stored separately from cache entries
         self._load()
 
     def _load(self):
         if self._cache_path.exists():
             try:
                 with open(self._cache_path, "r", encoding="utf-8") as f:
-                    self._cache = json.load(f)
+                    raw = json.load(f)
+                # Extract config hash from legacy format (stored in same dict)
+                self._config_hash = raw.pop("__config_hash__", None)
+                self._cache = raw
             except (json.JSONDecodeError, OSError):
                 self._cache = {}
 
@@ -67,8 +75,12 @@ class ScanCache:
         tmp_path = self._cache_path.with_suffix(".tmp")
         try:
             self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+            # Merge config hash into persisted data (separate from cache entries in memory)
+            persisted = dict(self._cache)
+            if self._config_hash is not None:
+                persisted["__config_hash__"] = self._config_hash
             with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(self._cache, f, indent=2)
+                json.dump(persisted, f, indent=2)
             tmp_path.replace(self._cache_path)
         except OSError as e:
             logger.warning("Failed to save scan cache: %s", e)
@@ -93,24 +105,38 @@ class ScanCache:
 
     def get_cached(self, dir_path: str, staleness_key: str) -> "list[dict] | None":
         """Return cached projects if staleness key matches, else None."""
-        entry = self._cache.get(dir_path)
-        if entry and entry.get("staleness_key") == staleness_key:
-            return entry["projects"]
-        return None
+        with self._lock:
+            entry = self._cache.get(dir_path)
+            if entry and entry.get("staleness_key") == staleness_key:
+                return entry["projects"]
+            return None
 
     def update(self, dir_path: str, staleness_key: str, projects: "list[dict]"):
         """Update cache for a directory."""
-        self._cache[dir_path] = {
-            "staleness_key": staleness_key,
-            "projects": projects,
-            "timestamp": time.time(),
-        }
-        self._save()
+        with self._lock:
+            self._cache[dir_path] = {
+                "staleness_key": staleness_key,
+                "projects": projects,
+                "timestamp": time.time(),
+            }
+            self._save()
+
+    def get_config_hash(self) -> "str | None":
+        """Return the stored config hash."""
+        with self._lock:
+            return self._config_hash
+
+    def set_config_hash(self, config_hash: str) -> None:
+        """Store the config hash."""
+        with self._lock:
+            self._config_hash = config_hash
+            self._save()
 
     def invalidate_all(self):
-        """Clear entire cache."""
-        self._cache = {}
-        self._save()
+        """Clear cache entries (preserves config hash)."""
+        with self._lock:
+            self._cache = {}
+            self._save()
 
 
 # Module-level cache instance (lazy-initialised on first use)
@@ -203,11 +229,11 @@ def scan_for_projects(
             sort_keys=True,
         ).encode()
     ).hexdigest()
-    stored_config_hash = cache._cache.get("__config_hash__")
+    stored_config_hash = cache.get_config_hash()
     if stored_config_hash is not None and stored_config_hash != config_hash:
         logger.info("Config changed — invalidating scan cache.")
         cache.invalidate_all()
-    cache._cache["__config_hash__"] = config_hash
+    cache.set_config_hash(config_hash)
 
     projects = []
 
@@ -226,9 +252,10 @@ def scan_for_projects(
                 projects.extend(cached)
                 continue
 
-        # Cache miss or force_refresh: perform actual scan
-        found = _scan_with_timeout(base, max_depth, markers, ignore_dirs, timeout_seconds, activity_threshold_minutes)
+        # Cache miss or force_refresh: compute staleness key BEFORE scan
+        # to avoid TOCTOU where filesystem changes during the scan
         staleness_key = cache._compute_staleness_key(base)
+        found = _scan_with_timeout(base, max_depth, markers, ignore_dirs, timeout_seconds, activity_threshold_minutes)
         cache.update(dir_key, staleness_key, found)
         projects.extend(found)
 
