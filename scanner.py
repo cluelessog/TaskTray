@@ -15,6 +15,85 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+class ScanCache:
+    """Cache for scan results, keyed by directory path with NTFS-safe staleness detection."""
+
+    def __init__(self, cache_path: Path):
+        self._cache_path = cache_path
+        self._cache: dict = {}  # dir_path -> {"staleness_key": str, "projects": list, "timestamp": float}
+        self._load()
+
+    def _load(self):
+        if self._cache_path.exists():
+            try:
+                with open(self._cache_path, "r", encoding="utf-8") as f:
+                    self._cache = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                self._cache = {}
+
+    def _save(self):
+        """Atomic write: write to temp file then rename."""
+        tmp_path = self._cache_path.with_suffix(".tmp")
+        try:
+            self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(self._cache, f, indent=2)
+            tmp_path.replace(self._cache_path)
+        except OSError as e:
+            logger.warning("Failed to save scan cache: %s", e)
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _compute_staleness_key(self, dir_path: Path) -> str:
+        """Hash of child entry names + mtimes at depth 1 (NTFS-safe)."""
+        entries = []
+        try:
+            for entry in sorted(dir_path.iterdir()):
+                try:
+                    st = entry.stat()
+                    entries.append(f"{entry.name}:{st.st_mtime}")
+                except OSError:
+                    entries.append(f"{entry.name}:error")
+        except OSError:
+            return ""
+        return hashlib.md5("|".join(entries).encode()).hexdigest()
+
+    def get_cached(self, dir_path: str, staleness_key: str) -> "list[dict] | None":
+        """Return cached projects if staleness key matches, else None."""
+        entry = self._cache.get(dir_path)
+        if entry and entry.get("staleness_key") == staleness_key:
+            return entry["projects"]
+        return None
+
+    def update(self, dir_path: str, staleness_key: str, projects: "list[dict]"):
+        """Update cache for a directory."""
+        self._cache[dir_path] = {
+            "staleness_key": staleness_key,
+            "projects": projects,
+            "timestamp": time.time(),
+        }
+        self._save()
+
+    def invalidate_all(self):
+        """Clear entire cache."""
+        self._cache = {}
+        self._save()
+
+
+# Module-level cache instance (lazy-initialised on first use)
+_scan_cache: "ScanCache | None" = None
+_CACHE_PATH = Path(__file__).parent / "data" / "scan_cache.json"
+
+
+def _get_module_cache() -> ScanCache:
+    global _scan_cache
+    if _scan_cache is None:
+        _scan_cache = ScanCache(_CACHE_PATH)
+    return _scan_cache
+
+
 def _scan_with_timeout(
     base: Path,
     max_depth: int,
@@ -61,10 +140,19 @@ def _scan_with_timeout(
     return results
 
 
-def scan_for_projects(config: dict) -> list[dict]:
+def scan_for_projects(
+    config: dict,
+    force_refresh: bool = False,
+    _cache: "ScanCache | None" = None,
+) -> list[dict]:
     """
     Walk configured directories up to max_depth looking for project markers.
     Returns a list of discovered project dicts.
+
+    Args:
+        config: Application config dict.
+        force_refresh: If True, skip cache and re-scan all directories.
+        _cache: Optional ScanCache instance (uses module-level cache if None).
     """
     scanner_cfg = config.get("scanner", {})
     scan_dirs = scanner_cfg.get("scan_dirs", [])
@@ -73,6 +161,21 @@ def scan_for_projects(config: dict) -> list[dict]:
     ignore_dirs = set(scanner_cfg.get("ignore_dirs", []))
     timeout_seconds = scanner_cfg.get("timeout_seconds", 10)
 
+    cache = _cache if _cache is not None else _get_module_cache()
+
+    # Detect config changes: invalidate cache if config fingerprint changed
+    config_hash = hashlib.md5(
+        json.dumps(
+            {"scan_dirs": scan_dirs, "markers": sorted(markers), "ignore_dirs": sorted(ignore_dirs)},
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    stored_config_hash = cache._cache.get("__config_hash__")
+    if stored_config_hash is not None and stored_config_hash != config_hash:
+        logger.info("Config changed — invalidating scan cache.")
+        cache.invalidate_all()
+    cache._cache["__config_hash__"] = config_hash
+
     projects = []
 
     for base_dir in scan_dirs:
@@ -80,7 +183,20 @@ def scan_for_projects(config: dict) -> list[dict]:
         if not base.exists():
             continue
 
+        dir_key = str(base)
+
+        if not force_refresh:
+            staleness_key = cache._compute_staleness_key(base)
+            cached = cache.get_cached(dir_key, staleness_key)
+            if cached is not None:
+                logger.debug("Cache hit for %s", dir_key)
+                projects.extend(cached)
+                continue
+
+        # Cache miss or force_refresh: perform actual scan
         found = _scan_with_timeout(base, max_depth, markers, ignore_dirs, timeout_seconds)
+        staleness_key = cache._compute_staleness_key(base)
+        cache.update(dir_key, staleness_key, found)
         projects.extend(found)
 
     return projects

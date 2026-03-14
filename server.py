@@ -175,7 +175,7 @@ def get_stats() -> Any:
 @app.route("/api/sync", methods=["POST"])
 def trigger_sync() -> Any:
     """Manually trigger a full sync."""
-    run_sync()
+    run_sync(force_refresh=True)
     return jsonify({"ok": True, "stats": store.get_stats()})
 
 
@@ -191,7 +191,7 @@ def get_config() -> Any:
 
 # ── Sync Logic ───────────────────────────────────────────
 
-def run_sync() -> None:
+def run_sync(force_refresh: bool = False) -> None:
     """Run disk scan + obsidian read."""
     global _last_sync_time
     log.info("Syncing...")
@@ -199,7 +199,7 @@ def run_sync() -> None:
 
     # Scan disk
     try:
-        disk_items = scan_for_projects(config)
+        disk_items = scan_for_projects(config, force_refresh=force_refresh)
         store.update_disk_items(disk_items)
         log.info(f"  Disk: found {len(disk_items)} projects")
     except Exception as e:

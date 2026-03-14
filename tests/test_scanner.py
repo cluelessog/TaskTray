@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scanner import _detect_type, _extract_description, _guess_category, scan_for_projects
+from scanner import _detect_type, _extract_description, _guess_category, scan_for_projects, ScanCache
 
 
 # ── _detect_type ──────────────────────────────────────────────────────────────
@@ -346,3 +346,135 @@ def test_scan_completes_within_timeout(tmp_path):
     )
     assert len(results) == 1
     assert results[0]["title"] == "fast-project"
+
+
+# ── ScanCache ──────────────────────────────────────────────────────────────────
+
+class TestScanCache:
+    def _make_config(self, scan_dirs, cache_path=None):
+        cfg = {
+            "scanner": {
+                "scan_dirs": scan_dirs,
+                "max_depth": 2,
+                "markers": [".git"],
+                "ignore_dirs": [],
+            }
+        }
+        return cfg
+
+    def test_cache_miss_triggers_scan(self, tmp_path):
+        """First scan with empty cache returns results and creates cache file."""
+        cache_file = tmp_path / "scan_cache.json"
+        proj = tmp_path / "projects" / "myproj"
+        proj.mkdir(parents=True)
+        (proj / ".git").mkdir()
+
+        config = self._make_config([str(tmp_path / "projects")])
+
+        cache = ScanCache(cache_file)
+        results = scan_for_projects(config, _cache=cache)
+
+        assert len(results) == 1
+        assert results[0]["title"] == "myproj"
+        assert cache_file.exists()
+
+    def test_cache_hit_returns_cached(self, tmp_path):
+        """Second scan without changes returns same results without re-scanning."""
+        cache_file = tmp_path / "scan_cache.json"
+        proj = tmp_path / "projects" / "myproj"
+        proj.mkdir(parents=True)
+        (proj / ".git").mkdir()
+
+        config = self._make_config([str(tmp_path / "projects")])
+
+        cache = ScanCache(cache_file)
+        results1 = scan_for_projects(config, _cache=cache)
+        assert len(results1) == 1
+
+        # Second scan — inject a sentinel into the cache to confirm it's returned
+        # by poisoning the cached projects list
+        scan_dir = str((tmp_path / "projects").resolve())
+        cached_entry = cache._cache.get(scan_dir)
+        assert cached_entry is not None, "Cache should have an entry after first scan"
+
+        # Overwrite cached projects with sentinel
+        cache._cache[scan_dir]["projects"] = [{"title": "sentinel_from_cache"}]
+        cache._save()
+
+        # Reload cache from disk and re-scan
+        cache2 = ScanCache(cache_file)
+        results2 = scan_for_projects(config, _cache=cache2)
+        assert results2 == [{"title": "sentinel_from_cache"}]
+
+    def test_cache_invalidated_on_file_change(self, tmp_path):
+        """Modify files in project dir; next scan detects staleness and re-scans."""
+        cache_file = tmp_path / "scan_cache.json"
+        scan_dir = tmp_path / "projects"
+        proj = scan_dir / "myproj"
+        proj.mkdir(parents=True)
+        (proj / ".git").mkdir()
+
+        config = self._make_config([str(scan_dir)])
+
+        cache = ScanCache(cache_file)
+        results1 = scan_for_projects(config, _cache=cache)
+        assert len(results1) == 1
+
+        # Add a new project — changes depth-1 entries of scan_dir
+        proj2 = scan_dir / "newproj"
+        proj2.mkdir()
+        (proj2 / ".git").mkdir()
+
+        # New cache instance re-reads from disk
+        cache2 = ScanCache(cache_file)
+        results2 = scan_for_projects(config, _cache=cache2)
+        # Should now find 2 projects (stale cache triggers re-scan)
+        assert len(results2) == 2
+
+    def test_force_refresh_bypasses_cache(self, tmp_path):
+        """Even with valid cache, force_refresh=True re-scans."""
+        cache_file = tmp_path / "scan_cache.json"
+        proj = tmp_path / "projects" / "myproj"
+        proj.mkdir(parents=True)
+        (proj / ".git").mkdir()
+
+        config = self._make_config([str(tmp_path / "projects")])
+
+        # Populate cache with sentinel
+        cache = ScanCache(cache_file)
+        scan_dir = str((tmp_path / "projects").resolve())
+        staleness_key = cache._compute_staleness_key(tmp_path / "projects")
+        cache.update(scan_dir, staleness_key, [{"title": "sentinel_from_cache"}])
+
+        # Normal scan uses cache
+        results_cached = scan_for_projects(config, _cache=cache)
+        assert results_cached == [{"title": "sentinel_from_cache"}]
+
+        # force_refresh=True bypasses cache
+        results_fresh = scan_for_projects(config, force_refresh=True, _cache=cache)
+        assert len(results_fresh) == 1
+        assert results_fresh[0]["title"] == "myproj"
+
+    def test_cache_staleness_key_uses_depth_1_entries(self, tmp_path):
+        """Staleness key changes when files are added or removed at depth 1."""
+        cache = ScanCache(tmp_path / "cache.json")
+
+        scan_dir = tmp_path / "projects"
+        scan_dir.mkdir()
+        (scan_dir / "proj_a").mkdir()
+
+        key1 = cache._compute_staleness_key(scan_dir)
+
+        # Add a new entry at depth 1
+        (scan_dir / "proj_b").mkdir()
+        key2 = cache._compute_staleness_key(scan_dir)
+
+        assert key1 != key2
+
+        # Remove an entry
+        import shutil
+        shutil.rmtree(scan_dir / "proj_a")
+        key3 = cache._compute_staleness_key(scan_dir)
+
+        assert key3 != key1
+        assert key3 != key2
