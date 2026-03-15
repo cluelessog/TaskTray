@@ -219,6 +219,29 @@ def test_export_invalid_format_returns_400(flask_client):
     assert r.status_code == 400
 
 
+def test_export_csv_formula_injection_sanitized(flask_client):
+    """CSV export sanitizes values that could be interpreted as formulas."""
+    flask_client.post("/api/items", json={"title": '=HYPERLINK("http://evil.example","click")'})
+    r = flask_client.get("/api/export?format=csv")
+    body = r.data.decode("utf-8")
+    # The formula-prefix title should be single-quote prefixed, not raw =
+    lines = body.strip().split("\n")
+    data_lines = [l for l in lines[1:] if l.strip()]
+    assert any("'=" in l for l in data_lines), f"Expected formula prefix quoting in CSV: {data_lines}"
+    assert not any(l.split(",")[1].startswith('=') for l in data_lines if l.strip())
+
+
+def test_export_content_disposition_quoted_filename(flask_client):
+    """Content-Disposition header has quoted filename per RFC 6266."""
+    r = flask_client.get("/api/export?format=json")
+    disp = r.headers.get("Content-Disposition", "")
+    assert 'filename="tasktray-export-' in disp
+
+    r2 = flask_client.get("/api/export?format=csv")
+    disp2 = r2.headers.get("Content-Disposition", "")
+    assert 'filename="tasktray-export-' in disp2
+
+
 def test_index_serves_html(flask_client, tmp_path):
     import server as server_module
     # Point Flask static folder to a temp dir with a fake index.html

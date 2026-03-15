@@ -191,6 +191,17 @@ def get_config() -> Any:
     })
 
 
+_CSV_FORMULA_PREFIXES = ('=', '+', '-', '@', '\t', '\r')
+
+
+def _csv_safe(value: object) -> str:
+    """Prefix-quote values that could be interpreted as formulas by spreadsheet apps."""
+    s = str(value) if value is not None else ''
+    if s.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + s
+    return s
+
+
 @app.route("/api/export", methods=["GET"])
 def export_items() -> Any:
     """Export items as JSON or CSV."""
@@ -207,16 +218,16 @@ def export_items() -> Any:
         writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         for item in items:
-            writer.writerow(item)
+            writer.writerow({k: _csv_safe(v) for k, v in item.items()})
         resp = app.response_class(
             output.getvalue(),
             mimetype="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}.csv"}
+            headers={"Content-Disposition": f'attachment; filename="{filename}.csv"'}
         )
         return resp
     else:
         resp = jsonify(items)
-        resp.headers["Content-Disposition"] = f"attachment; filename={filename}.json"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{filename}.json"'
         return resp
 
 
