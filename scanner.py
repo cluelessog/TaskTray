@@ -15,10 +15,73 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+def _detect_worktree(path: Path) -> "dict | None":
+    """Detect if path is a git worktree (not a regular repo).
+
+    Worktrees have a `.git` **file** (not directory) containing a ``gitdir:`` line
+    pointing to ``<parent>/.git/worktrees/<branch>``.
+
+    Returns ``{"is_worktree": True, "parent_path": str, "worktree_branch": str}``
+    or ``None`` if not a worktree.
+    """
+    git_path = path / ".git"
+    try:
+        if not git_path.exists() or git_path.is_dir():
+            return None
+        content = git_path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+
+    if not content.startswith("gitdir:"):
+        return None
+
+    gitdir = content[len("gitdir:"):].strip()
+    # Normalise Windows backslashes
+    gitdir = gitdir.replace("\\", "/")
+
+    # Expected: <parent>/.git/worktrees/<branch-name>
+    parts = gitdir.replace("\\", "/").split("/")
+    try:
+        wt_idx = parts.index("worktrees")
+    except ValueError:
+        return None
+
+    if wt_idx < 2 or wt_idx + 1 >= len(parts):
+        return None
+
+    branch_name = parts[wt_idx + 1]
+    # Parent path is everything before ".git/worktrees/..."
+    # .git is at wt_idx - 1
+    parent_path = "/".join(parts[: wt_idx - 1])
+    if not parent_path:
+        return None
+
+    return {
+        "is_worktree": True,
+        "parent_path": parent_path,
+        "worktree_branch": branch_name,
+    }
+
+
+def _resolve_git_index(path: Path) -> Path:
+    """Return the path to the git index file, resolving worktree gitdir if needed."""
+    git_path = path / ".git"
+    if git_path.is_file():
+        try:
+            content = git_path.read_text(encoding="utf-8", errors="replace").strip()
+            if content.startswith("gitdir:"):
+                gitdir = content[len("gitdir:"):].strip().replace("\\", "/")
+                return Path(gitdir) / "index"
+        except OSError:
+            pass
+    return git_path / "index"
+
+
 def detect_recent_activity(path: Path, threshold_minutes: int) -> bool:
     """Check if a project directory has recently modified files (depth 1 + .git/index).
 
     Returns False if threshold_minutes <= 0 (disabled) or on any error.
+    For worktrees, resolves the actual gitdir path to find the real index file.
     """
     if threshold_minutes <= 0:
         return False
@@ -32,8 +95,8 @@ def detect_recent_activity(path: Path, threshold_minutes: int) -> bool:
                         return True
                 except OSError:
                     continue
-        # Check .git/index if exists
-        git_index = path / ".git" / "index"
+        # Check git index (resolves worktree gitdir)
+        git_index = _resolve_git_index(path)
         if git_index.exists():
             try:
                 if git_index.stat().st_mtime > cutoff:
@@ -280,7 +343,7 @@ def _build_project_info(path: Path, markers: set, activity_threshold_minutes: in
     # Detect category heuristically
     category = _guess_category(path, project_type)
 
-    return {
+    info = {
         "id": f"disk_{hashlib.md5(str(path).encode()).hexdigest()[:8]}",
         "title": path.name,
         "path": str(path),
@@ -295,7 +358,16 @@ def _build_project_info(path: Path, markers: set, activity_threshold_minutes: in
         "focused": False,
         "created_at": datetime.now().isoformat(),
         "has_recent_activity": detect_recent_activity(path, activity_threshold_minutes),
+        "is_worktree": False,
     }
+
+    wt = _detect_worktree(path)
+    if wt:
+        info["is_worktree"] = True
+        info["parent_path"] = wt["parent_path"]
+        info["worktree_branch"] = wt["worktree_branch"]
+
+    return info
 
 
 def _detect_type(markers: set, path: Path) -> str:
