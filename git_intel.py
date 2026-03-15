@@ -252,6 +252,107 @@ def compute_metrics(commits: list[dict], config: dict) -> dict:
     }
 
 
+# ── Stage inference ───────────────────────────────────────────────────────────
+
+import re
+
+_COMMIT_TYPE_RE = re.compile(r'^(feat|fix|chore|docs|refactor|test|style|ci|perf|build)(\([^)]+\))?:\s')
+_DEFAULT_INCEPTION_MAX = 10
+_DEFAULT_MAINTENANCE_AVG_MAX = 1.0
+_DEFAULT_SPRINT_GAP_DAYS = 14
+
+
+def infer_stage(commits: list[dict], metrics: dict, config: dict) -> str:
+    """Infer project lifecycle stage from commits and metrics.
+
+    Priority: stalled > inception > maintenance > active (default).
+    """
+    git_cfg = config.get("git_intel", {})
+    stalled_days = git_cfg.get("stalled_threshold_days", _DEFAULT_STALLED_DAYS)
+    thresholds = git_cfg.get("stage_thresholds", {})
+    inception_max = thresholds.get("inception_max_commits", _DEFAULT_INCEPTION_MAX)
+    maintenance_avg_max = thresholds.get("maintenance_weekly_avg_max", _DEFAULT_MAINTENANCE_AVG_MAX)
+
+    # Stalled overrides everything
+    if metrics.get("velocity_trend") == "stalled":
+        return "stalled"
+
+    # Inception: too few commits
+    if len(commits) < inception_max:
+        return "inception"
+
+    # Maintenance: low weekly average
+    weekly = metrics.get("weekly_counts", [])
+    if weekly:
+        avg = sum(weekly) / len(weekly)
+        if avg <= maintenance_avg_max:
+            return "maintenance"
+
+    return "active"
+
+
+def parse_commit_types(commits: list[dict]) -> dict:
+    """Parse conventional commit types and return percentage breakdown.
+
+    Returns dict like {"feat": 0.4, "fix": 0.3, "other": 0.3}.
+    Values sum to 1.0. Empty input returns {}.
+    """
+    if not commits:
+        return {}
+
+    counts: dict[str, int] = {}
+    for c in commits:
+        subject = c.get("subject", "")
+        m = _COMMIT_TYPE_RE.match(subject)
+        ctype = m.group(1) if m else "other"
+        counts[ctype] = counts.get(ctype, 0) + 1
+
+    total = sum(counts.values())
+    return {k: v / total for k, v in counts.items()}
+
+
+def detect_sprints(commits: list[dict], config: dict) -> list[dict]:
+    """Detect sprints via cluster-based gap analysis.
+
+    Finds gaps > sprint_gap_days between commit bursts.
+    Returns list of {"start": date, "end": date, "commit_count": int, "type": "cluster"}.
+    """
+    if not commits:
+        return []
+
+    git_cfg = config.get("git_intel", {})
+    gap_days = git_cfg.get("sprint_gap_days", _DEFAULT_SPRINT_GAP_DAYS)
+
+    # Sort commits by date
+    sorted_commits = sorted(commits, key=lambda c: _to_datetime(c["date"]))
+    dates = [_to_datetime(c["date"]) for c in sorted_commits]
+
+    sprints = []
+    cluster_start = 0
+
+    for i in range(1, len(dates)):
+        gap = (dates[i] - dates[i - 1]).days
+        if gap >= gap_days:
+            # End current cluster, start new one
+            sprints.append({
+                "start": dates[cluster_start].isoformat(),
+                "end": dates[i - 1].isoformat(),
+                "commit_count": i - cluster_start,
+                "type": "cluster",
+            })
+            cluster_start = i
+
+    # Final cluster
+    sprints.append({
+        "start": dates[cluster_start].isoformat(),
+        "end": dates[-1].isoformat(),
+        "commit_count": len(dates) - cluster_start,
+        "type": "cluster",
+    })
+
+    return sprints
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 
@@ -277,6 +378,14 @@ def analyze_project(
         "commits": [],
         "commit_count": 0,
         "error": None,
+        "total_commits": 0,
+        "weekly_counts": [],
+        "velocity_trend": "stalled",
+        "last_commit_date": None,
+        "most_active_day": None,
+        "stage": "stalled",
+        "commit_types": {},
+        "sprints": [],
     }
 
     try:
@@ -291,20 +400,24 @@ def analyze_project(
         if cached is not None:
             result["commits"] = cached
             result["commit_count"] = len(cached)
-            return result
+        else:
+            # Cache miss — run git log
+            commits = get_commit_log(repo_path, since_months=history_months, timeout=timeout)
+            serialized = [
+                {"hash": c["hash"], "date": c["date"].isoformat(), "subject": c["subject"]}
+                for c in commits
+            ]
+            cache.set(repo_path, head, history_months, serialized)
+            cache.save()
+            result["commits"] = serialized
+            result["commit_count"] = len(commits)
 
-        # Cache miss — run git log
-        commits = get_commit_log(repo_path, since_months=history_months, timeout=timeout)
-        # Serialize dates for cache storage
-        serialized = [
-            {"hash": c["hash"], "date": c["date"].isoformat(), "subject": c["subject"]}
-            for c in commits
-        ]
-        cache.set(repo_path, head, history_months, serialized)
-        cache.save()
-
-        result["commits"] = serialized
-        result["commit_count"] = len(commits)
+        # Compute metrics, stage, commit types, sprints
+        metrics = compute_metrics(result["commits"], config)
+        result.update(metrics)
+        result["stage"] = infer_stage(result["commits"], metrics, config)
+        result["commit_types"] = parse_commit_types(result["commits"])
+        result["sprints"] = detect_sprints(result["commits"], config)
 
     except Exception as e:
         log.warning("Error analyzing %s: %s", repo_path, e)

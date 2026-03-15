@@ -406,3 +406,169 @@ def test_linear_regression_known_values():
     assert abs(_linear_regression_slope([5, 5, 5, 5])) < 0.01
     # Decreasing: slope should be negative
     assert _linear_regression_slope([10, 8, 6, 4, 2]) < 0
+
+
+# ── Task 5.3: Stage inference, commit types, sprint detection ────────────────
+
+def test_stage_inception():
+    """<10 commits returns 'inception'."""
+    from git_intel import infer_stage, compute_metrics
+    commits = _make_commits([(f"c{i}", i) for i in range(5)])
+    m = compute_metrics(commits, _default_config())
+    assert infer_stage(commits, m, _default_config()) == "inception"
+
+
+def test_stage_active():
+    """Recent commits with decent velocity returns 'active'."""
+    from git_intel import infer_stage, compute_metrics
+    # 40 commits over ~80 days → avg > 1.0/week → active
+    commits = _make_commits([(f"c{i}", i * 2) for i in range(40)])
+    m = compute_metrics(commits, _default_config())
+    assert infer_stage(commits, m, _default_config()) == "active"
+
+
+def test_stage_maintenance():
+    """Low weekly average + not stalled returns 'maintenance'."""
+    from git_intel import infer_stage, compute_metrics
+    # 15 commits (above inception) but spread very thin — 1 every 2 weeks
+    commits = _make_commits([(f"c{i}", i * 14) for i in range(15)])
+    cfg = _default_config()
+    m = compute_metrics(commits, cfg)
+    stage = infer_stage(commits, m, cfg)
+    assert stage == "maintenance"
+
+
+def test_stage_stalled():
+    """No commits in >14 days returns 'stalled'."""
+    from git_intel import infer_stage, compute_metrics
+    commits = _make_commits([(f"c{i}", 30 + i * 7) for i in range(15)])
+    m = compute_metrics(commits, _default_config())
+    assert infer_stage(commits, m, _default_config()) == "stalled"
+
+
+def test_stage_stalled_overrides_inception():
+    """Even <10 commits, if >14 days old, returns 'stalled'."""
+    from git_intel import infer_stage, compute_metrics
+    commits = _make_commits([("old", 30)])
+    m = compute_metrics(commits, _default_config())
+    assert infer_stage(commits, m, _default_config()) == "stalled"
+
+
+def test_stage_thresholds_configurable():
+    """Custom inception_max_commits changes stage boundary."""
+    from git_intel import infer_stage, compute_metrics
+    # 40 commits over 40 days → avg well above 1.0/week
+    commits = _make_commits([(f"c{i}", i) for i in range(40)])
+    cfg_low = {"git_intel": {"history_months": 6, "stalled_threshold_days": 14,
+                              "stage_thresholds": {"inception_max_commits": 5, "maintenance_weekly_avg_max": 1.0}}}
+    cfg_high = {"git_intel": {"history_months": 6, "stalled_threshold_days": 14,
+                               "stage_thresholds": {"inception_max_commits": 50, "maintenance_weekly_avg_max": 1.0}}}
+    m = compute_metrics(commits, cfg_low)
+    assert infer_stage(commits, m, cfg_low) == "active"  # 40 > 5
+    m2 = compute_metrics(commits, cfg_high)
+    assert infer_stage(commits, m2, cfg_high) == "inception"  # 40 < 50
+
+
+def test_parse_commit_types_feat():
+    """'feat: add login' classified as feat."""
+    from git_intel import parse_commit_types
+    commits = [{"subject": "feat: add login"}]
+    result = parse_commit_types(commits)
+    assert result.get("feat", 0) == 1.0
+
+
+def test_parse_commit_types_fix():
+    """'fix: null check' classified as fix."""
+    from git_intel import parse_commit_types
+    commits = [{"subject": "fix: null check"}]
+    result = parse_commit_types(commits)
+    assert result.get("fix", 0) == 1.0
+
+
+def test_parse_commit_types_scoped():
+    """'feat(auth): add OAuth' classified as feat (scope ignored)."""
+    from git_intel import parse_commit_types
+    commits = [{"subject": "feat(auth): add OAuth"}]
+    result = parse_commit_types(commits)
+    assert result.get("feat", 0) == 1.0
+
+
+def test_parse_commit_types_chore():
+    """'chore: update deps' classified as chore."""
+    from git_intel import parse_commit_types
+    commits = [{"subject": "chore: update deps"}]
+    result = parse_commit_types(commits)
+    assert result.get("chore", 0) == 1.0
+
+
+def test_parse_commit_types_other():
+    """'random message' classified as other."""
+    from git_intel import parse_commit_types
+    commits = [{"subject": "random message"}]
+    result = parse_commit_types(commits)
+    assert result.get("other", 0) == 1.0
+
+
+def test_parse_commit_types_percentages_sum():
+    """All percentages sum to 1.0 (within float tolerance)."""
+    from git_intel import parse_commit_types
+    commits = [
+        {"subject": "feat: x"}, {"subject": "fix: y"},
+        {"subject": "chore: z"}, {"subject": "random"},
+    ]
+    result = parse_commit_types(commits)
+    assert abs(sum(result.values()) - 1.0) < 0.001
+
+
+def test_parse_commit_types_empty():
+    """Empty list returns empty dict."""
+    from git_intel import parse_commit_types
+    assert parse_commit_types([]) == {}
+
+
+def test_detect_sprints_by_gap():
+    """14+ day gap between commit clusters creates separate sprints."""
+    from git_intel import detect_sprints
+    # Two clusters separated by 20 days
+    commits = _make_commits(
+        [(f"a{i}", i) for i in range(5)] +  # cluster 1: days 0-4
+        [(f"b{i}", 25 + i) for i in range(5)]  # cluster 2: days 25-29
+    )
+    sprints = detect_sprints(commits, _default_config())
+    assert len(sprints) == 2
+    for s in sprints:
+        assert "start" in s
+        assert "end" in s
+        assert "commit_count" in s
+        assert s["type"] == "cluster"
+
+
+def test_detect_sprints_empty():
+    """No commits returns empty sprint list."""
+    from git_intel import detect_sprints
+    assert detect_sprints([], _default_config()) == []
+
+
+def test_analyze_project_full_output(tmp_path):
+    """Final analyze_project returns all fields."""
+    repo = _init_git_repo(tmp_path, commits=[
+        ("feat: add login", 0), ("fix: bug", 3), ("chore: deps", 7),
+        ("feat: dashboard", 10), ("test: coverage", 14),
+    ])
+    from git_intel import analyze_project
+    cfg = _default_config()
+    result = analyze_project(str(repo), cfg, cache_dir=tmp_path)
+    # Core fields (Task 5.1)
+    assert result["head_hash"] is not None
+    assert result["commit_count"] == 5
+    assert result["error"] is None
+    # Metrics fields (Task 5.2)
+    assert "total_commits" in result
+    assert "weekly_counts" in result
+    assert "velocity_trend" in result
+    assert "last_commit_date" in result
+    assert "most_active_day" in result
+    # Stage fields (Task 5.3)
+    assert "stage" in result
+    assert "commit_types" in result
+    assert "sprints" in result
