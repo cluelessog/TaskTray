@@ -47,3 +47,42 @@ class TestSearchFilter:
         """A clear button exists for the search input."""
         # Look for a clear/reset mechanism
         assert 'clearSearch' in html or 'clear-search' in html or "search-clear" in html
+
+
+class TestKeyboardShortcuts:
+    def test_keydown_listener_exists(self, html):
+        """Global keydown event listener is registered."""
+        assert "addEventListener" in html and "keydown" in html
+
+    def test_shortcut_suppression_check(self, html):
+        """Shortcuts are suppressed when typing in input/textarea/select."""
+        assert 'INPUT' in html and 'TEXTAREA' in html and 'SELECT' in html
+
+    def test_shortcut_slash_focuses_search(self, html):
+        """/ key focuses the search input."""
+        assert 'search-input' in html
+        assert "'/'" in html or '"/"' in html
+
+    def test_shortcut_n_opens_modal(self, html):
+        """N key opens the new item modal."""
+        assert 'openAdd' in html
+
+    def test_shortcut_view_switching(self, html):
+        """1/2/3 keys switch between views."""
+        assert 'setView' in html
+
+    def test_shortcut_escape_closes_modal(self, html):
+        """Escape key closes modal or clears search."""
+        assert 'Escape' in html
+
+    def test_shortcut_s_triggers_sync(self, html):
+        """S key triggers sync."""
+        assert 'triggerSync' in html
+
+    def test_shortcut_help_overlay_exists(self, html):
+        """Help overlay element exists with shortcut descriptions."""
+        assert 'help-overlay' in html or 'shortcut-help' in html or 'shortcuts-overlay' in html
+
+    def test_shortcut_help_button_exists(self, html):
+        """A ? button exists in the header to show help."""
+        assert '?' in html

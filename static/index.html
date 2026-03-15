@@ -331,6 +331,35 @@ body {
   border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer;
 }
 
+/* ── Shortcuts Overlay ─────────────────────── */
+.shortcuts-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex;
+  align-items: center; justify-content: center; z-index: 200;
+  animation: fadeIn 0.15s ease;
+}
+.shortcuts-box {
+  background: var(--bg-card); border-radius: 12px; padding: 24px 28px;
+  width: 100%; max-width: 400px; border: 1px solid var(--border);
+  animation: slideDown 0.15s ease;
+}
+.shortcuts-title {
+  font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+  color: var(--cyan); text-transform: uppercase; letter-spacing: 2px;
+  margin-bottom: 16px;
+}
+.shortcut-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0; border-bottom: 1px solid rgba(30,41,59,0.4);
+  font-size: 12px;
+}
+.shortcut-row:last-child { border-bottom: none; }
+.shortcut-key {
+  font-family: var(--font-mono); color: var(--cyan); background: var(--cyan-bg);
+  border: 1px solid rgba(0,229,204,0.25); border-radius: 4px;
+  padding: 2px 8px; font-size: 11px; white-space: nowrap;
+}
+.shortcut-desc { color: var(--text-muted); }
+
 /* ── Toast ─────────────────────────────────── */
 .toast {
   position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
@@ -400,6 +429,7 @@ let state = {
   showModal: false,
   editItem: null,
   syncing: false,
+  showHelp: false,
   toast: null,
   form: { title: '', category: 'dev', status: 'backlog', priority: 'p2', notes: '', focused: false },
 };
@@ -485,6 +515,7 @@ function render() {
         <span class="source-badge manual">${stats.by_source?.manual||0} manual</span>
       </div>
       <button class="btn-icon ${state.syncing?'syncing':''}" onclick="triggerSync()" title="Sync now">⟳</button>
+      <button class="btn-icon" onclick="toggleHelp()" title="Keyboard shortcuts (?)">?</button>
     </div>
   </header>`;
 
@@ -577,6 +608,9 @@ function render() {
   // Modal
   if (showModal) html += renderModal();
 
+  // Help overlay
+  if (state.showHelp) html += renderHelp();
+
   app.innerHTML = html;
 }
 
@@ -644,6 +678,20 @@ function renderModal() {
   return html;
 }
 
+function renderHelp() {
+  return `<div class="shortcuts-overlay" onclick="toggleHelp()"><div class="shortcuts-box" onclick="event.stopPropagation()">
+    <div class="shortcuts-title">Keyboard Shortcuts</div>
+    <div class="shortcut-row"><span class="shortcut-desc">Focus search</span><span class="shortcut-key">/ &nbsp;or&nbsp; Ctrl+K</span></div>
+    <div class="shortcut-row"><span class="shortcut-desc">New item</span><span class="shortcut-key">N</span></div>
+    <div class="shortcut-row"><span class="shortcut-desc">Board view</span><span class="shortcut-key">1</span></div>
+    <div class="shortcut-row"><span class="shortcut-desc">List view</span><span class="shortcut-key">2</span></div>
+    <div class="shortcut-row"><span class="shortcut-desc">Focus view</span><span class="shortcut-key">3</span></div>
+    <div class="shortcut-row"><span class="shortcut-desc">Sync</span><span class="shortcut-key">S</span></div>
+    <div class="shortcut-row"><span class="shortcut-desc">Close modal / clear search</span><span class="shortcut-key">Escape</span></div>
+    <div class="shortcut-row"><span class="shortcut-desc">Show this help</span><span class="shortcut-key">?</span></div>
+  </div></div>`;
+}
+
 // ── Actions ─────────────────────────────────
 function setView(v) { state.view = v; state.expanded = null; render(); }
 function setFilter(f) { state.filter = f; render(); }
@@ -706,6 +754,36 @@ async function quickAdd() {
 }
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function toggleHelp() { state.showHelp = !state.showHelp; render(); }
+
+function handleKeydown(e) {
+  const tag = document.activeElement?.tagName;
+  const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+  if (e.key === 'Escape') {
+    if (state.showHelp) { state.showHelp = false; render(); return; }
+    if (state.showModal) { closeModal(); return; }
+    if (state.search) { clearSearch(); return; }
+    return;
+  }
+
+  if (inField) return;
+
+  if (e.key === '/' || (e.key === 'k' && e.ctrlKey)) {
+    e.preventDefault();
+    document.getElementById('search-input')?.focus();
+    return;
+  }
+  if (e.key === 'n' || e.key === 'N') { openAdd(); return; }
+  if (e.key === '1') { setView('board'); return; }
+  if (e.key === '2') { setView('list'); return; }
+  if (e.key === '3') { setView('focus'); return; }
+  if (e.key === 's' || e.key === 'S') { triggerSync(); return; }
+  if (e.key === '?') { toggleHelp(); return; }
+}
+
+document.addEventListener('keydown', handleKeydown);
 
 // ── Init ────────────────────────────────────
 (async function init() {
