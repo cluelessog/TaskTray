@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -253,8 +254,6 @@ def compute_metrics(commits: list[dict], config: dict) -> dict:
 
 
 # ── Stage inference ───────────────────────────────────────────────────────────
-
-import re
 
 _COMMIT_TYPE_RE = re.compile(r'^(feat|fix|chore|docs|refactor|test|style|ci|perf|build)(\([^)]+\))?:\s')
 _DEFAULT_INCEPTION_MAX = 10
