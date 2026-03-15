@@ -169,3 +169,27 @@ class TestGitIntelDisplay:
     def test_git_data_conditional(self, html):
         """Git data rendering is conditional on git_velocity_trend existence."""
         assert "git_velocity_trend" in html
+
+
+# ── Worktree Grouping & Config (Task 6.5) ───────────────────────────────────
+
+class TestWorktreeGrouping:
+    def test_worktree_badge_css(self, html):
+        """.worktree-badge CSS class exists in HTML."""
+        assert ".worktree-badge" in html
+
+    def test_worktree_label_in_render(self, html):
+        """renderCard references is_worktree."""
+        assert "is_worktree" in html
+
+    def test_worktree_parent_label(self, html):
+        """Render logic includes parent_path reference."""
+        assert "parent_path" in html
+
+    def test_config_has_git_recency_days(self):
+        """config.yaml has git_recency_days under scanner section."""
+        import yaml
+        config_path = HTML_PATH.parent.parent / "config.yaml"
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        assert cfg.get("scanner", {}).get("git_recency_days") == 14

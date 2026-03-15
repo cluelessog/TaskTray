@@ -39,6 +39,9 @@ scanner:
   # Minutes of inactivity threshold for auto-promote (0 = disabled)
   activity_threshold_minutes: 30
 
+  # Days of git commit recency for auto-promote (0 = disabled)
+  git_recency_days: 14
+
   # Directories to skip during scanning
   ignore_dirs:
     - "node_modules"

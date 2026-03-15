@@ -390,3 +390,53 @@ class TestGitIntelMerge:
         # Missing item gets defaults
         assert items["disk_c"]["git_velocity_trend"] == "stalled"
         assert items["disk_c"]["git_commit_count"] == 0
+
+
+# ── Full Integration Test (Task 6.5) ─────────────────────────────────────────
+
+class TestFullSyncIntegration:
+    def test_full_sync_integration(self, flask_client):
+        """Full pipeline: scanner returns worktree + regular items, sync runs,
+        API returns both with git fields and worktree annotations."""
+        import server as s
+        disk_items = [
+            {
+                "id": "disk_parent", "title": "ParentRepo", "path": "/parent",
+                "source": "disk", "status": "backlog", "is_worktree": False,
+                "has_recent_activity": False,
+            },
+            {
+                "id": "disk_wt", "title": "feature-wt", "path": "/worktree",
+                "source": "disk", "status": "backlog", "is_worktree": True,
+                "parent_path": "/parent", "worktree_branch": "feature",
+                "has_recent_activity": False,
+            },
+        ]
+        git_results = {
+            "/parent": {
+                "velocity_trend": "steady", "total_commits": 30,
+                "last_commit_date": "2026-03-12T10:00:00", "stage": "active",
+                "commit_types": {"feat": 0.5, "fix": 0.5},
+            },
+            "/worktree": {
+                "velocity_trend": "accelerating", "total_commits": 15,
+                "last_commit_date": "2026-03-15T09:00:00", "stage": "inception",
+                "commit_types": {"feat": 1.0},
+            },
+        }
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", return_value=git_results):
+            s.run_sync()
+        r = flask_client.get("/api/items")
+        items = {i["id"]: i for i in r.get_json()}
+
+        # Parent has git fields
+        assert items["disk_parent"]["git_velocity_trend"] == "steady"
+        assert items["disk_parent"]["git_commit_count"] == 30
+        assert items["disk_parent"]["is_worktree"] is False
+
+        # Worktree has git fields + worktree annotations
+        assert items["disk_wt"]["git_velocity_trend"] == "accelerating"
+        assert items["disk_wt"]["is_worktree"] is True
+        assert items["disk_wt"]["parent_path"] == "/parent"
+        assert items["disk_wt"]["worktree_branch"] == "feature"

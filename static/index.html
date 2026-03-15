@@ -248,6 +248,11 @@ body {
   padding: 1px 6px; border-radius: 10px; font-size: 9px; font-family: var(--font-mono);
   letter-spacing: 0.3px; white-space: nowrap;
 }
+.worktree-badge {
+  font-size: 9px; padding: 2px 6px; border-radius: 10px; font-family: var(--font-mono);
+  background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple);
+  letter-spacing: 0.3px;
+}
 
 .card-expanded {
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
@@ -663,6 +668,7 @@ function renderCard(item, compact) {
       <span class="badge" style="background:${pri.color}18;color:${pri.color};font-weight:600">${pri.label}</span>
       <button class="status-badge" style="background:${status.color}22;color:${status.color}" onclick="event.stopPropagation();cycleStatus('${item.id}')">${status.label}</button>
       <span class="source-indicator">${sourceLabel}</span>
+      ${item.is_worktree ? `<span class="worktree-badge">WT: ${esc(item.parent_path ? item.parent_path.split('/').pop() : '')}</span>` : ''}
     </div>`;
 
   if (item.git_velocity_trend) {
