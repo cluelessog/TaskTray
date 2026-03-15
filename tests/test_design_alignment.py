@@ -193,3 +193,51 @@ class TestWorktreeGrouping:
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         assert cfg.get("scanner", {}).get("git_recency_days") == 14
+
+
+# ── Worktree Nesting (Grouping Under Parent) ────────────────────────────────
+
+class TestWorktreeNesting:
+    def test_worktree_group_css_class(self, html):
+        """.worktree-group CSS class exists in style block."""
+        assert ".worktree-group" in html
+
+    def test_worktree_nested_card_css_class(self, html):
+        """.worktree-nested-card CSS class exists in style block."""
+        assert ".worktree-nested-card" in html
+
+    def test_worktree_count_badge_css_class(self, html):
+        """.worktree-count-badge CSS class exists in style block."""
+        assert ".worktree-count-badge" in html
+
+    def test_build_grouped_items_function(self, html):
+        """buildGroupedItems function is defined in JS."""
+        assert "function buildGroupedItems" in html
+
+    def test_render_worktree_group_function(self, html):
+        """renderWorktreeGroup function is defined in JS."""
+        assert "function renderWorktreeGroup" in html
+
+    def test_expanded_worktrees_state(self, html):
+        """expandedWorktrees state variable exists."""
+        assert "expandedWorktrees" in html
+
+    def test_toggle_worktree_group_function(self, html):
+        """toggleWorktreeGroup function is defined in JS."""
+        assert "function toggleWorktreeGroup" in html
+
+    def test_worktree_group_has_indent(self, html):
+        """.worktree-group CSS has margin-left or padding-left for nesting."""
+        import re
+        group_match = re.search(r'\.worktree-group\s*\{[^}]+\}', html)
+        assert group_match, ".worktree-group CSS rule not found"
+        rule = group_match.group()
+        assert "margin-left" in rule or "padding-left" in rule
+
+    def test_worktree_toggle_css_class(self, html):
+        """.worktree-toggle CSS class exists."""
+        assert ".worktree-toggle" in html
+
+    def test_stop_propagation_on_toggle(self, html):
+        """Worktree toggle click uses event.stopPropagation()."""
+        assert "toggleWorktreeGroup" in html

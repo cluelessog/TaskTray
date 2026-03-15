@@ -253,6 +253,23 @@ body {
   background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple);
   letter-spacing: 0.3px;
 }
+.worktree-group {
+  margin-left: 16px; padding-left: 12px; border-left: 2px solid var(--purple);
+  margin-top: 4px;
+}
+.worktree-nested-card {
+  background: rgba(167,139,250,0.04); border-radius: 6px; margin-bottom: 4px;
+}
+.worktree-nested-card .card { border-left-color: var(--purple); }
+.worktree-count-badge {
+  font-size: 10px; padding: 2px 8px; border-radius: 10px; font-family: var(--font-mono);
+  background: var(--purple-bg); color: var(--purple); border: 1px solid rgba(167,139,250,0.3);
+  cursor: pointer; letter-spacing: 0.3px;
+}
+.worktree-count-badge:hover { border-color: var(--purple); }
+.worktree-toggle {
+  cursor: pointer; transition: color 0.15s;
+}
 
 .card-expanded {
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
@@ -460,6 +477,7 @@ let state = {
   filter: 'all',
   search: '',
   expanded: null,
+  expandedWorktrees: new Set(),
   showModal: false,
   editItem: null,
   syncing: false,
@@ -509,6 +527,55 @@ async function triggerSync() {
 function showToast(msg) {
   state.toast = msg; render();
   setTimeout(() => { state.toast = null; render(); }, 2200);
+}
+
+// ── Worktree Grouping ────────────────────────
+function buildGroupedItems(arr) {
+  const parentMap = {};
+  const worktrees = [];
+  const standalone = [];
+  arr.forEach(item => {
+    if (item.is_worktree) { worktrees.push(item); }
+    else { parentMap[item.path] = { parent: item, worktrees: [] }; standalone.push(item); }
+  });
+  const grouped = [];
+  const orphans = [];
+  worktrees.forEach(wt => {
+    const key = wt.parent_path;
+    if (key && parentMap[key]) { parentMap[key].worktrees.push(wt); }
+    else { orphans.push(wt); }
+  });
+  const result = { grouped: [], orphans: orphans, standalone: [] };
+  standalone.forEach(item => {
+    const entry = parentMap[item.path];
+    if (entry && entry.worktrees.length > 0) { result.grouped.push(entry); }
+    else { result.standalone.push(item); }
+  });
+  return result;
+}
+
+function toggleWorktreeGroup(parentId) {
+  if (state.expandedWorktrees.has(parentId)) { state.expandedWorktrees.delete(parentId); }
+  else { state.expandedWorktrees.add(parentId); }
+  render();
+}
+
+function renderWorktreeGroup(parent, worktrees, compact) {
+  const isOpen = state.expandedWorktrees.has(parent.id);
+  const toggleIcon = isOpen ? '▾' : '▸';
+  let html = renderCard(parent, compact);
+  // Inject worktree count badge before closing </div> of the card
+  const badgeHtml = `<div style="margin-top:6px"><button class="worktree-count-badge worktree-toggle" onclick="event.stopPropagation();toggleWorktreeGroup('${parent.id}')">${toggleIcon} ${worktrees.length} worktree${worktrees.length !== 1 ? 's' : ''}</button></div>`;
+  const lastDiv = html.lastIndexOf('</div>');
+  html = html.slice(0, lastDiv) + badgeHtml + html.slice(lastDiv);
+  if (isOpen) {
+    html += `<div class="worktree-group">`;
+    worktrees.forEach(wt => {
+      html += `<div class="worktree-nested-card">${renderCard(wt, compact)}</div>`;
+    });
+    html += `</div>`;
+  }
+  return html;
 }
 
 // ── Render ───────────────────────────────────
@@ -592,7 +659,10 @@ function render() {
     if (focusedItems.length === 0) html += `<p class="empty">No items in focus. Star items to pin them here.</p>`;
     else {
       html += `<div class="card-grid">`;
-      focusedItems.forEach(i => { html += renderCard(i, false); });
+      const focusGroups = buildGroupedItems(focusedItems);
+      focusGroups.grouped.forEach(g => { html += renderWorktreeGroup(g.parent, g.worktrees, false); });
+      focusGroups.standalone.forEach(i => { html += renderCard(i, false); });
+      focusGroups.orphans.forEach(i => { html += renderCard(i, false); });
       html += `</div>`;
     }
   }
@@ -609,7 +679,10 @@ function render() {
           <span class="col-count">${colItems.length}</span>
         </div>`;
       if (colItems.length === 0) html += `<p class="col-empty">No items</p>`;
-      colItems.forEach(i => { html += renderCard(i, true); });
+      const colGroups = buildGroupedItems(colItems);
+      colGroups.grouped.forEach(g => { html += renderWorktreeGroup(g.parent, g.worktrees, true); });
+      colGroups.standalone.forEach(i => { html += renderCard(i, true); });
+      colGroups.orphans.forEach(i => { html += renderCard(i, true); });
       html += `</div>`;
     });
     html += `</div>`;
@@ -625,7 +698,10 @@ function render() {
     if (sorted.length === 0) html += `<p class="empty">${state.search ? 'No items match your search.' : 'No items found.'}</p>`;
     else {
       html += `<div class="card-list">`;
-      sorted.forEach(i => { html += renderCard(i, false); });
+      const listGroups = buildGroupedItems(sorted);
+      listGroups.grouped.forEach(g => { html += renderWorktreeGroup(g.parent, g.worktrees, false); });
+      listGroups.standalone.forEach(i => { html += renderCard(i, false); });
+      listGroups.orphans.forEach(i => { html += renderCard(i, false); });
       html += `</div>`;
     }
   }
