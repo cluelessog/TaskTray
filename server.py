@@ -301,6 +301,7 @@ def run_sync(force_refresh: bool = False) -> None:
             now = datetime.now()
             for item in disk_items:
                 if (item.get("status") == "backlog"
+                        and not item.get("has_recent_activity")  # skip if already promoted by fs activity
                         and not store.has_status_override(item["id"])
                         and not store.is_manual_item(item["id"])):
                     last_commit = item.get("git_last_commit")
