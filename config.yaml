@@ -69,6 +69,16 @@ obsidian:
   # Method 3: YAML frontmatter key that marks a note for the dashboard
   frontmatter_key: "dashboard"   # looks for `dashboard: true` in frontmatter
 
+# --- Git Intelligence ---
+git_intel:
+  timeout_seconds: 5
+  history_months: 6
+  stalled_threshold_days: 14
+  stage_thresholds:
+    inception_max_commits: 10
+    maintenance_weekly_avg_max: 1.0
+  sprint_gap_days: 14
+
   # Watch for file changes and auto-sync
   watch: true
   watch_interval_seconds: 5
