@@ -241,3 +241,27 @@ class TestWorktreeNesting:
     def test_stop_propagation_on_toggle(self, html):
         """Worktree toggle click uses event.stopPropagation()."""
         assert "toggleWorktreeGroup" in html
+
+
+# ── Claude Code Display (CC Integration) ─────────────────────────────────────
+
+class TestCCDisplay:
+    def test_cc_health_dot_css(self, html):
+        """.cc-health-dot CSS class exists."""
+        assert ".cc-health-dot" in html
+
+    def test_cc_phase_badge_css(self, html):
+        """.cc-phase-badge CSS class exists."""
+        assert ".cc-phase-badge" in html
+
+    def test_cc_summary_strip_css(self, html):
+        """.cc-summary-strip CSS class exists."""
+        assert ".cc-summary-strip" in html
+
+    def test_cc_source_label(self, html):
+        """Source label for claude_code exists in renderCard."""
+        assert "claude_code" in html
+
+    def test_cc_summary_fetch(self, html):
+        """fetchCCSummary function or cc-summary API call exists."""
+        assert "cc-summary" in html or "ccSummary" in html

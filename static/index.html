@@ -271,6 +271,27 @@ body {
   cursor: pointer; transition: color 0.15s;
 }
 
+/* ── Claude Code Status ──────────────────── */
+.cc-summary-strip {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  font-family: var(--font-mono); font-size: 10px; margin-top: 4px;
+}
+.cc-health-dot {
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+  flex-shrink: 0;
+}
+.cc-phase-badge {
+  font-size: 9px; padding: 1px 6px; border-radius: 10px; font-family: var(--font-mono);
+  letter-spacing: 0.3px; white-space: nowrap;
+}
+.cc-blocked {
+  color: var(--red); font-size: 10px; font-family: var(--font-mono);
+}
+.cc-info {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  font-size: 10px; font-family: var(--font-mono); margin-top: 4px;
+}
+
 .card-expanded {
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
   animation: slideDown 0.15s ease;
@@ -449,7 +470,7 @@ const PRIORITY_OPTS = [
   { id: 'p2', label: 'P2', color: '#fbbf24' },
   { id: 'p3', label: 'P3', color: '#94a3b8' },
 ];
-const SOURCE_LABELS = { disk: '⬡ disk', obsidian: '◈ obsidian', manual: '✎ manual' };
+const SOURCE_LABELS = { disk: '⬡ disk', obsidian: '◈ obsidian', manual: '✎ manual', claude_code: '⚡ claude' };
 
 function getCat(id) { return CATEGORIES.find(c => c.id === id) || CATEGORIES[0]; }
 function getStatus(id) { return STATUS_OPTS.find(s => s.id === id) || STATUS_OPTS[2]; }
@@ -484,6 +505,7 @@ let state = {
   showHelp: false,
   toast: null,
   dragging: false,
+  ccSummary: null,
   form: { title: '', category: 'dev', status: 'backlog', priority: 'p2', notes: '', focused: false },
 };
 
@@ -499,6 +521,13 @@ async function fetchStats() {
   try {
     const res = await fetch(API + '/api/stats');
     state.stats = await res.json();
+    render();
+  } catch(e) {}
+}
+async function fetchCCSummary() {
+  try {
+    const res = await fetch(API + '/api/cc-summary');
+    state.ccSummary = await res.json();
     render();
   } catch(e) {}
 }
@@ -616,6 +645,12 @@ function render() {
         <span class="source-badge obsidian">${stats.by_source?.obsidian||0} obsidian</span>
         <span class="source-badge manual">${stats.by_source?.manual||0} manual</span>
       </div>
+      ${state.ccSummary ? `<div class="cc-summary-strip">
+        ${state.ccSummary.on_track ? `<span><span class="cc-health-dot" style="background:var(--green)"></span> ${state.ccSummary.on_track} on track</span>` : ''}
+        ${state.ccSummary.at_risk ? `<span><span class="cc-health-dot" style="background:var(--yellow)"></span> ${state.ccSummary.at_risk} at risk</span>` : ''}
+        ${state.ccSummary.blocked ? `<span class="cc-blocked"><span class="cc-health-dot" style="background:var(--red)"></span> ${state.ccSummary.blocked} blocked</span>` : ''}
+        <span style="color:var(--text-faint)">${state.ccSummary.total||0} CC projects</span>
+      </div>` : ''}
       <button class="btn-icon" onclick="window.location.href='/api/export?format=json'" title="Export items as JSON">Export</button>
       <button class="btn-icon ${state.syncing?'syncing':''}" onclick="triggerSync()" title="Sync now">⟳</button>
       <button class="btn-icon" onclick="toggleHelp()" title="Keyboard shortcuts (?)">?</button>
@@ -760,6 +795,20 @@ function renderCard(item, compact) {
       <span class="git-badge" style="color:var(--text-muted)">${item.git_commit_count || 0} commits</span>
       <span class="git-badge" style="color:var(--text-muted)">${relativeTime(item.git_last_commit)}</span>
       <span class="git-badge" style="background:${stageColor}18;color:${stageColor}">${item.git_stage || ''}</span>
+    </div>`;
+  }
+
+  if (item.cc) {
+    const cc = item.cc;
+    const healthColors = {'🟢': 'var(--green)', '🟡': 'var(--yellow)', '🔴': 'var(--red)'};
+    const hColor = healthColors[cc.health_icon] || 'var(--text-dim)';
+    const phaseColors = {implementation: 'var(--cyan)', planning: 'var(--yellow)', testing: 'var(--green)', shipping: 'var(--green)', spec: 'var(--purple)'};
+    const pColor = phaseColors[cc.phase] || 'var(--text-muted)';
+    html += `<div class="cc-info">
+      <span class="cc-health-dot" style="background:${hColor}"></span>
+      <span class="cc-phase-badge" style="background:${pColor}18;color:${pColor}">${esc(cc.phase)}</span>
+      ${cc.in_progress && cc.in_progress.length ? `<span style="color:var(--text-muted)">Working: ${esc(cc.in_progress[0])}</span>` : ''}
+      ${cc.blocked && cc.blocked.length ? `<span class="cc-blocked">Blocked: ${esc(cc.blocked[0].task || cc.blocked[0].reason || '')}</span>` : ''}
     </div>`;
   }
 
@@ -947,11 +996,13 @@ document.addEventListener('keydown', handleKeydown);
 (async function init() {
   await fetchItems();
   await fetchStats();
+  await fetchCCSummary();
   // Auto-refresh every 30s
   setInterval(async () => {
     if (state.dragging) return; // Don't interrupt drag operations
     await fetchItems();
     await fetchStats();
+    await fetchCCSummary();
   }, 30000);
 })();
 </script>

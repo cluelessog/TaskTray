@@ -28,6 +28,7 @@ from flask_cors import CORS
 from scanner import scan_for_projects
 from obsidian_reader import read_obsidian_items
 from store import DataStore
+from cc_status_reader import CCStatusReader
 import git_intel
 
 try:
@@ -80,6 +81,7 @@ _last_sync_time: str | None = None
 
 # ── Data Store ───────────────────────────────────────────
 store = DataStore()
+cc_reader = CCStatusReader(config)
 
 # ── Flask App ────────────────────────────────────────────
 app = Flask(__name__, static_folder="static")
@@ -238,6 +240,28 @@ def api_docs() -> Any:
     return send_from_directory("static", "api.html")
 
 
+@app.route("/api/cc-status", methods=["GET"])
+def get_cc_status() -> Any:
+    """Get Claude Code project statuses."""
+    return jsonify(cc_reader.read_all())
+
+
+@app.route("/api/cc-summary", methods=["GET"])
+def get_cc_summary() -> Any:
+    """Get cross-project summary (blockers, active work)."""
+    return jsonify(cc_reader.get_summary())
+
+
+@app.route("/api/cc-status/<project_name>", methods=["GET"])
+def get_cc_project_status(project_name: str) -> Any:
+    """Get detailed status for a single CC project."""
+    items = cc_reader.read_all()
+    for item in items:
+        if item["title"].lower() == project_name.lower():
+            return jsonify(item)
+    return jsonify({"error": "Project not found"}), 404
+
+
 # ── Sync Logic ───────────────────────────────────────────
 
 def _apply_git_intelligence(disk_items: list, cfg: dict) -> list:
@@ -326,6 +350,14 @@ def run_sync(force_refresh: bool = False) -> None:
         log.info(f"  Obsidian: found {len(obs_items)} items")
     except Exception as e:
         log.error(f"  Obsidian read failed: {e}")
+
+    # Read Claude Code project statuses
+    try:
+        cc_items = cc_reader.read_all()
+        store.update_cc_items(cc_items)
+        log.info(f"  Claude Code: found {len(cc_items)} projects")
+    except Exception as e:
+        log.error(f"  Claude Code status read failed: {e}")
 
     elapsed = time.time() - t0
     _last_sync_time = datetime.now().isoformat()
