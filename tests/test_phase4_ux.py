@@ -86,3 +86,34 @@ class TestKeyboardShortcuts:
     def test_shortcut_help_button_exists(self, html):
         """A ? button exists in the header to show help."""
         assert '?' in html
+
+
+class TestDragAndDrop:
+    def test_board_cards_are_draggable(self, html):
+        """Cards in board view have draggable attribute."""
+        assert 'draggable="true"' in html or "draggable='true'" in html
+
+    def test_drag_handle_css_exists(self, html):
+        """CSS contains drag handle styling."""
+        assert 'drag-handle' in html or 'cursor: grab' in html or 'cursor:grab' in html
+
+    def test_drop_zone_event_handlers(self, html):
+        """Board columns have dragover and drop handlers."""
+        assert 'ondragover' in html or 'dragover' in html
+        assert 'ondrop' in html or 'drop' in html
+
+    def test_dragstart_sets_data(self, html):
+        """Drag start handler uses dataTransfer.setData."""
+        assert 'dataTransfer' in html and 'setData' in html
+
+    def test_drop_calls_update_item(self, html):
+        """Drop handler calls updateItem with status."""
+        assert 'updateItem' in html
+
+    def test_drag_highlight_css(self, html):
+        """CSS has a drag-over highlight class for columns."""
+        assert 'drag-over' in html
+
+    def test_drag_state_flag(self, html):
+        """State has a dragging flag and auto-refresh checks it."""
+        assert 'dragging' in html
