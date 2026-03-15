@@ -86,6 +86,38 @@ git_intel:
   watch: true
   watch_interval_seconds: 5
 
+# --- Claude Code Project Status ---
+claude_code:
+  projects:
+    - name: "GenAiLeader"
+      path: "D:/Projects/GenAiLeader"
+      category: "learning"
+      priority: "p1"
+    - name: "IdeaExploration"
+      path: "D:/Projects/IdeaExploration"
+      category: "ideas"
+      priority: "p0"
+      focused: true
+    - name: "SteveTrading"
+      path: "D:/Projects/SteveTrading"
+      category: "trading"
+      priority: "p0"
+      focused: true
+    - name: "TaskTray"
+      path: "D:/Projects/TaskTray"
+      category: "dev"
+      priority: "p0"
+      focused: true
+    - name: "ZeroJournal"
+      path: "D:/Projects/ZeroJournal"
+      category: "trading"
+      priority: "p1"
+    - name: "zerojournal-react"
+      path: "D:/Projects/zerojournal-react"
+      category: "trading"
+      priority: "p0"
+      focused: true
+
 # --- Categories (match your workflow) ---
 categories:
   dev: "Dev"
