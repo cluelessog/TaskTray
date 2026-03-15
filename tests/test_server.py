@@ -282,3 +282,111 @@ def test_api_docs_matches_dark_theme(flask_client):
     body = r.data.decode("utf-8")
     # Should use the same dark theme CSS variables
     assert "--bg-root" in body or "#080d14" in body
+
+
+# ── Git Intel Merge Tests (Task 6.2) ─────────────────────────────────────────
+
+class TestGitIntelMerge:
+    def test_sync_merges_git_intel_fields(self, flask_client):
+        """After sync, disk items should have git_velocity_trend and git_commit_count fields."""
+        import server as s
+        mock_results = {
+            "/fake/path": {
+                "velocity_trend": "steady",
+                "total_commits": 42,
+                "last_commit_date": "2026-03-10T12:00:00",
+                "stage": "active",
+                "commit_types": {"feat": 0.5, "fix": 0.5},
+            }
+        }
+        disk_items = [{"id": "disk_abc", "title": "Test", "path": "/fake/path", "source": "disk", "status": "backlog", "is_worktree": False}]
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", return_value=mock_results):
+            s.run_sync()
+        r = flask_client.get("/api/items")
+        items = r.get_json()
+        disk = [i for i in items if i.get("id") == "disk_abc"]
+        assert len(disk) == 1
+        assert disk[0]["git_velocity_trend"] == "steady"
+        assert disk[0]["git_commit_count"] == 42
+        assert disk[0]["git_last_commit"] == "2026-03-10T12:00:00"
+        assert disk[0]["git_stage"] == "active"
+        assert disk[0]["git_commit_types"] == {"feat": 0.5, "fix": 0.5}
+
+    def test_sync_git_intel_failure_does_not_crash(self, flask_client):
+        """If analyze_projects raises, sync completes without crashing."""
+        import server as s
+        disk_items = [{"id": "disk_def", "title": "Test2", "path": "/fake2", "source": "disk", "status": "backlog", "is_worktree": False}]
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", side_effect=Exception("git broke")):
+            s.run_sync()  # Should not raise
+        r = flask_client.get("/api/items")
+        items = r.get_json()
+        assert any(i["id"] == "disk_def" for i in items)
+
+    def test_api_items_includes_git_fields(self, flask_client):
+        """GET /api/items returns items with git fields when available."""
+        import server as s
+        mock_results = {
+            "/proj": {
+                "velocity_trend": "accelerating",
+                "total_commits": 100,
+                "last_commit_date": "2026-03-15T10:00:00",
+                "stage": "active",
+                "commit_types": {"feat": 1.0},
+            }
+        }
+        disk_items = [{"id": "disk_ghi", "title": "Proj", "path": "/proj", "source": "disk", "status": "backlog", "is_worktree": False}]
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", return_value=mock_results):
+            s.run_sync()
+        r = flask_client.get("/api/items")
+        data = r.get_json()
+        proj = next(i for i in data if i["id"] == "disk_ghi")
+        assert "git_velocity_trend" in proj
+        assert "git_stage" in proj
+
+    def test_api_items_no_git_fields_for_manual(self, flask_client):
+        """Manual items should not have git fields."""
+        flask_client.post("/api/items", json={"title": "ManualItem"})
+        r = flask_client.get("/api/items")
+        manual = [i for i in r.get_json() if i.get("source") == "manual"]
+        assert len(manual) >= 1
+        assert "git_velocity_trend" not in manual[0]
+
+    def test_git_fields_not_stripped(self, flask_client):
+        """get_all_items_filtered() preserves git_* fields (not popped like has_recent_activity)."""
+        import server as s
+        mock_results = {"/x": {"velocity_trend": "steady", "total_commits": 5, "last_commit_date": None, "stage": "stalled", "commit_types": {}}}
+        disk_items = [{"id": "disk_jkl", "title": "X", "path": "/x", "source": "disk", "status": "backlog", "is_worktree": False}]
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", return_value=mock_results):
+            s.run_sync()
+        r = flask_client.get("/api/items")
+        item = next(i for i in r.get_json() if i["id"] == "disk_jkl")
+        assert "git_velocity_trend" in item
+        assert "has_recent_activity" not in item  # This one IS stripped
+
+    def test_sync_git_intel_partial_results(self, flask_client):
+        """When analyze_projects returns data for 2 of 3 items, all 3 appear with defaults for the missing one."""
+        import server as s
+        mock_results = {
+            "/a": {"velocity_trend": "steady", "total_commits": 10, "last_commit_date": "2026-03-10", "stage": "active", "commit_types": {}},
+            "/b": {"velocity_trend": "accelerating", "total_commits": 50, "last_commit_date": "2026-03-14", "stage": "active", "commit_types": {"feat": 1.0}},
+            # /c is missing from results
+        }
+        disk_items = [
+            {"id": "disk_a", "title": "A", "path": "/a", "source": "disk", "status": "backlog", "is_worktree": False},
+            {"id": "disk_b", "title": "B", "path": "/b", "source": "disk", "status": "backlog", "is_worktree": False},
+            {"id": "disk_c", "title": "C", "path": "/c", "source": "disk", "status": "backlog", "is_worktree": False},
+        ]
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", return_value=mock_results):
+            s.run_sync()
+        r = flask_client.get("/api/items")
+        items = {i["id"]: i for i in r.get_json()}
+        assert items["disk_a"]["git_velocity_trend"] == "steady"
+        assert items["disk_b"]["git_commit_count"] == 50
+        # Missing item gets defaults
+        assert items["disk_c"]["git_velocity_trend"] == "stalled"
+        assert items["disk_c"]["git_commit_count"] == 0
