@@ -152,6 +152,106 @@ def get_commit_log(
         return []
 
 
+# ── Metrics ───────────────────────────────────────────────────────────────────
+
+_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+_DEFAULT_STALLED_DAYS = 14
+_SLOPE_THRESHOLD = 0.1  # commits/week/week (tuned for 26-week window)
+
+
+def _linear_regression_slope(values: list) -> float:
+    """Compute slope via least-squares on (index, value) pairs. Stdlib only."""
+    n = len(values)
+    if n < 2:
+        return 0.0
+    xs = list(range(n))
+    sum_x = sum(xs)
+    sum_y = sum(values)
+    sum_xy = sum(x * y for x, y in zip(xs, values))
+    sum_x2 = sum(x * x for x in xs)
+    denom = n * sum_x2 - sum_x * sum_x
+    if denom == 0:
+        return 0.0
+    return (n * sum_xy - sum_x * sum_y) / denom
+
+
+def _to_datetime(d) -> datetime:
+    """Coerce a date value to datetime (handles str or datetime)."""
+    if isinstance(d, datetime):
+        return d
+    if isinstance(d, str):
+        return datetime.fromisoformat(d)
+    return datetime.now()
+
+
+def compute_metrics(commits: list[dict], config: dict) -> dict:
+    """Compute velocity metrics from a list of commit dicts.
+
+    Returns dict with total_commits, weekly_counts, velocity_trend,
+    last_commit_date, most_active_day.
+    """
+    git_cfg = config.get("git_intel", {})
+    history_months = git_cfg.get("history_months", _DEFAULT_HISTORY_MONTHS)
+    stalled_days = git_cfg.get("stalled_threshold_days", _DEFAULT_STALLED_DAYS)
+
+    if not commits:
+        return {
+            "total_commits": 0,
+            "weekly_counts": [],
+            "velocity_trend": "stalled",
+            "last_commit_date": None,
+            "most_active_day": None,
+        }
+
+    # Parse dates
+    dates = sorted([_to_datetime(c["date"]) for c in commits])
+    now = datetime.now()
+
+    # Weekly bucketing over the full analysis window
+    weeks = int(history_months * 4.33)
+    window_start = now - timedelta(weeks=weeks)
+    weekly_counts = [0] * weeks
+
+    for d in dates:
+        week_idx = int((d - window_start).days / 7)
+        if 0 <= week_idx < weeks:
+            weekly_counts[week_idx] += 1
+
+    # Last commit
+    last_date = max(dates)
+    last_commit_date = last_date.isoformat()
+
+    # Most active day
+    day_counts = [0] * 7
+    for d in dates:
+        day_counts[d.weekday()] += 1
+    max_day_count = max(day_counts)
+    most_active_day = _DAYS[day_counts.index(max_day_count)] if max_day_count > 0 else None
+
+    # Velocity trend
+    days_since_last = (now - last_date).days
+    if days_since_last >= stalled_days:
+        velocity_trend = "stalled"
+    elif len(weekly_counts) >= 2:
+        slope = _linear_regression_slope(weekly_counts)
+        if slope > _SLOPE_THRESHOLD:
+            velocity_trend = "accelerating"
+        elif slope < -_SLOPE_THRESHOLD:
+            velocity_trend = "slowing"
+        else:
+            velocity_trend = "steady"
+    else:
+        velocity_trend = "steady"
+
+    return {
+        "total_commits": len(commits),
+        "weekly_counts": weekly_counts,
+        "velocity_trend": velocity_trend,
+        "last_commit_date": last_commit_date,
+        "most_active_day": most_active_day,
+    }
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 

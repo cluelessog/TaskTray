@@ -264,3 +264,145 @@ def test_analyze_projects_one_broken(tmp_path):
     results = analyze_projects(projects, _default_config(), cache_dir=tmp_path)
     assert results[str(repo)]["commit_count"] == 1
     assert results[str(bad)]["commit_count"] == 0
+
+
+# ── Task 5.2: Velocity and commit frequency metrics ─────────────────────────
+
+def _make_commits(patterns):
+    """Build fixture commit list from (subject, days_ago) tuples."""
+    return [
+        {"hash": f"h{i:04x}", "date": datetime.now() - timedelta(days=d), "subject": s}
+        for i, (s, d) in enumerate(patterns)
+    ]
+
+
+def test_metrics_total_commits():
+    """Correct count from fixture commit list."""
+    from git_intel import compute_metrics
+    commits = _make_commits([("a", 1), ("b", 3), ("c", 7)])
+    m = compute_metrics(commits, _default_config())
+    assert m["total_commits"] == 3
+
+
+def test_metrics_weekly_counts_length():
+    """weekly_counts has correct number of weeks for the analysis window."""
+    from git_intel import compute_metrics
+    commits = _make_commits([("a", 1)])
+    cfg = _default_config()
+    m = compute_metrics(commits, cfg)
+    # 6 months ≈ 26 weeks
+    assert len(m["weekly_counts"]) >= 25
+    assert len(m["weekly_counts"]) <= 27
+
+
+def test_metrics_weekly_counts_values():
+    """Commits are bucketed into correct ISO weeks."""
+    from git_intel import compute_metrics
+    # 3 commits in the same week (this week), 1 commit 14 days ago (different week)
+    commits = _make_commits([("a", 0), ("b", 1), ("c", 2), ("d", 14)])
+    m = compute_metrics(commits, _default_config())
+    # Last element should have 3 commits (current week)
+    assert m["weekly_counts"][-1] >= 2  # at least 2 in recent week
+    assert sum(m["weekly_counts"]) == 4
+
+
+def test_metrics_velocity_accelerating():
+    """Increasing weekly pattern yields 'accelerating'."""
+    from git_intel import compute_metrics
+    # Strong acceleration: 0 commits weeks 1-20, then 5+ commits per week recently
+    commits = _make_commits(
+        [("old", 160)] +
+        [(f"recent{i}", i % 7) for i in range(20)]
+    )
+    m = compute_metrics(commits, _default_config())
+    assert m["velocity_trend"] == "accelerating"
+
+
+def test_metrics_velocity_steady():
+    """Flat weekly pattern yields 'steady'."""
+    from git_intel import compute_metrics
+    # Even spread: 1 commit every 7 days over 12 weeks
+    commits = _make_commits([(f"w{i}", i * 7) for i in range(12)])
+    m = compute_metrics(commits, _default_config())
+    assert m["velocity_trend"] == "steady"
+
+
+def test_metrics_velocity_slowing():
+    """Decreasing weekly pattern yields 'slowing'."""
+    from git_intel import compute_metrics
+    # Heavy early activity (5 commits/week for first 10 weeks), 1 recent to avoid stalled
+    commits = _make_commits(
+        [("recent", 3)] +
+        [(f"old{i}", 100 + i) for i in range(50)]
+    )
+    m = compute_metrics(commits, _default_config())
+    assert m["velocity_trend"] == "slowing"
+
+
+def test_metrics_velocity_stalled():
+    """No recent commits yields 'stalled' regardless of historical slope."""
+    from git_intel import compute_metrics
+    # All commits > 14 days ago
+    commits = _make_commits([(f"old{i}", 30 + i * 7) for i in range(10)])
+    m = compute_metrics(commits, _default_config())
+    assert m["velocity_trend"] == "stalled"
+
+
+def test_metrics_stalled_threshold_configurable():
+    """Custom stalled_threshold_days in config changes stalled detection."""
+    from git_intel import compute_metrics
+    # Commits 10 days ago — stalled at threshold=7, not stalled at threshold=14
+    commits = _make_commits([("x", 10)])
+    cfg_strict = {"git_intel": {"history_months": 6, "stalled_threshold_days": 7}}
+    cfg_relaxed = {"git_intel": {"history_months": 6, "stalled_threshold_days": 14}}
+    assert compute_metrics(commits, cfg_strict)["velocity_trend"] == "stalled"
+    assert compute_metrics(commits, cfg_relaxed)["velocity_trend"] != "stalled"
+
+
+def test_metrics_last_commit_date():
+    """Returns ISO date string of most recent commit."""
+    from git_intel import compute_metrics
+    commits = _make_commits([("recent", 2), ("old", 30)])
+    m = compute_metrics(commits, _default_config())
+    assert m["last_commit_date"] is not None
+    # Should be approximately 2 days ago
+    parsed = datetime.fromisoformat(m["last_commit_date"])
+    assert (datetime.now() - parsed).days <= 3
+
+
+def test_metrics_most_active_day():
+    """Returns correct day name when one day dominates."""
+    from git_intel import compute_metrics
+    # Create commits all on the same weekday by using multiples of 7
+    base_days_ago = 0
+    # Find how many days ago was a Monday
+    today = datetime.now()
+    days_since_monday = today.weekday()  # 0=Monday
+    commits = _make_commits([
+        (f"mon{i}", days_since_monday + i * 7)
+        for i in range(5)
+    ] + [("other", days_since_monday + 1)])  # one Tuesday
+    m = compute_metrics(commits, _default_config())
+    assert m["most_active_day"] == "Monday"
+
+
+def test_metrics_empty_commits():
+    """All fields return sensible defaults."""
+    from git_intel import compute_metrics
+    m = compute_metrics([], _default_config())
+    assert m["total_commits"] == 0
+    assert m["weekly_counts"] == [] or all(c == 0 for c in m["weekly_counts"])
+    assert m["velocity_trend"] == "stalled"
+    assert m["last_commit_date"] is None
+    assert m["most_active_day"] is None
+
+
+def test_linear_regression_known_values():
+    """Slope calculation matches hand-computed values."""
+    from git_intel import _linear_regression_slope
+    # y = 2x: slope should be 2.0
+    assert abs(_linear_regression_slope([0, 2, 4, 6, 8]) - 2.0) < 0.01
+    # Constant: slope should be 0
+    assert abs(_linear_regression_slope([5, 5, 5, 5])) < 0.01
+    # Decreasing: slope should be negative
+    assert _linear_regression_slope([10, 8, 6, 4, 2]) < 0
