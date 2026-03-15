@@ -163,6 +163,23 @@ body {
 }
 .filter-chip.active { background: var(--cyan-bg); color: var(--cyan); border-color: rgba(0,229,204,0.3); }
 
+/* ── Search ────────────────────────────────── */
+.search-wrap {
+  position: relative; display: flex; align-items: center;
+}
+.search-input {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px;
+  color: var(--text); font-family: var(--font-mono); font-size: 11px;
+  padding: 5px 28px 5px 12px; outline: none; width: 180px; transition: border-color 0.15s;
+}
+.search-input:focus { border-color: var(--cyan); }
+.search-input::placeholder { color: var(--text-faint); }
+.search-clear {
+  position: absolute; right: 8px; background: none; border: none; color: var(--text-dim);
+  font-size: 16px; cursor: pointer; line-height: 1; padding: 0;
+}
+.search-clear:hover { color: var(--text); }
+
 /* ── Content ───────────────────────────────── */
 .content { padding: 0 24px 100px; position: relative; z-index: 1; }
 .section-hint { color: var(--text-dim); font-size: 12px; margin-bottom: 14px; font-family: var(--font-mono); }
@@ -378,6 +395,7 @@ let state = {
   stats: {},
   view: 'board',
   filter: 'all',
+  search: '',
   expanded: null,
   showModal: false,
   editItem: null,
@@ -432,7 +450,15 @@ function showToast(msg) {
 function render() {
   const app = document.getElementById('app');
   const { items, stats, view, filter, expanded, showModal, toast } = state;
-  const filtered = filter === 'all' ? items : items.filter(i => i.category === filter);
+  const searchTerm = state.search.toLowerCase();
+  const filtered = items.filter(i => {
+    const catMatch = filter === 'all' || i.category === filter;
+    if (!catMatch) return false;
+    if (!searchTerm) return true;
+    return (i.title || '').toLowerCase().includes(searchTerm)
+      || (i.notes || '').toLowerCase().includes(searchTerm)
+      || (i.category || '').toLowerCase().includes(searchTerm);
+  });
   const focusedItems = items.filter(i => i.focused && i.status !== 'done');
   const doneItems = items.filter(i => i.status === 'done');
 
@@ -475,6 +501,10 @@ function render() {
       ${['board','list','focus'].map(v =>
         `<button class="view-tab ${view===v?'active':''}" onclick="setView('${v}')">${v.charAt(0).toUpperCase()+v.slice(1)}${v==='focus'&&focusedItems.length?' ('+focusedItems.length+')':''}</button>`
       ).join('')}
+    </div>
+    <div class="search-wrap">
+      <input id="search-input" class="search-input" type="text" placeholder="Search items..." value="${esc(state.search)}" oninput="onSearchInput(event)">
+      ${state.search ? `<button class="search-clear" onclick="clearSearch()" title="Clear search">×</button>` : ''}
     </div>
     <div class="filter-chips">
       <button class="filter-chip ${filter==='all'?'active':''}" onclick="setFilter('all')">All</button>
@@ -525,7 +555,7 @@ function render() {
       if (so.indexOf(a.status) !== so.indexOf(b.status)) return so.indexOf(a.status) - so.indexOf(b.status);
       return po.indexOf(a.priority) - po.indexOf(b.priority);
     });
-    if (sorted.length === 0) html += `<p class="empty">No items found.</p>`;
+    if (sorted.length === 0) html += `<p class="empty">${state.search ? 'No items match your search.' : 'No items found.'}</p>`;
     else {
       html += `<div class="card-list">`;
       sorted.forEach(i => { html += renderCard(i, false); });
@@ -617,6 +647,14 @@ function renderModal() {
 // ── Actions ─────────────────────────────────
 function setView(v) { state.view = v; state.expanded = null; render(); }
 function setFilter(f) { state.filter = f; render(); }
+
+let _searchTimer = null;
+function onSearchInput(e) {
+  clearTimeout(_searchTimer);
+  const val = e.target.value;
+  _searchTimer = setTimeout(() => { state.search = val; render(); }, 150);
+}
+function clearSearch() { state.search = ''; render(); }
 function toggleExpand(id) { state.expanded = state.expanded === id ? null : id; render(); }
 
 async function toggleFocus(id) {
