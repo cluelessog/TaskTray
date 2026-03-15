@@ -521,6 +521,7 @@ function render() {
         <span class="source-badge obsidian">${stats.by_source?.obsidian||0} obsidian</span>
         <span class="source-badge manual">${stats.by_source?.manual||0} manual</span>
       </div>
+      <button class="btn-icon" onclick="window.location.href='/api/export?format=json'" title="Export items as JSON">Export</button>
       <button class="btn-icon ${state.syncing?'syncing':''}" onclick="triggerSync()" title="Sync now">⟳</button>
       <button class="btn-icon" onclick="toggleHelp()" title="Keyboard shortcuts (?)">?</button>
     </div>

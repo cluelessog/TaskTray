@@ -6,6 +6,8 @@ Run: python server.py
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import time
 import socket
@@ -187,6 +189,41 @@ def get_config() -> Any:
         "vault_path": config.get("obsidian", {}).get("vault_path", ""),
         "categories": config.get("categories", {}),
     })
+
+
+@app.route("/api/export", methods=["GET"])
+def export_items() -> Any:
+    """Export items as JSON or CSV."""
+    fmt = request.args.get("format", "json").lower()
+    if fmt not in ("json", "csv"):
+        return jsonify({"error": f"Invalid format '{fmt}'. Must be 'json' or 'csv'"}), 400
+
+    items = store.get_all_items_filtered()
+    filename = f"tasktray-export-{datetime.now().strftime('%Y-%m-%d')}"
+
+    if fmt == "csv":
+        output = io.StringIO()
+        fields = ["id", "title", "category", "status", "priority", "source", "focused", "notes"]
+        writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        for item in items:
+            writer.writerow(item)
+        resp = app.response_class(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}.csv"}
+        )
+        return resp
+    else:
+        resp = jsonify(items)
+        resp.headers["Content-Disposition"] = f"attachment; filename={filename}.json"
+        return resp
+
+
+@app.route("/api/docs", methods=["GET"])
+def api_docs() -> Any:
+    """Serve API documentation page."""
+    return send_from_directory("static", "api.html")
 
 
 # ── Sync Logic ───────────────────────────────────────────

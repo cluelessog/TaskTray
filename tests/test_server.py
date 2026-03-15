@@ -152,6 +152,73 @@ def test_health_endpoint_updates_after_sync(flask_client):
     s._last_sync_time = old_sync
 
 
+# ── Export endpoint tests ──────────────────────────────────────────────────────
+
+def test_export_json_returns_200(flask_client):
+    r = flask_client.get("/api/export?format=json")
+    assert r.status_code == 200
+
+def test_export_json_content_type(flask_client):
+    r = flask_client.get("/api/export?format=json")
+    assert "application/json" in r.content_type
+
+def test_export_json_content_disposition(flask_client):
+    r = flask_client.get("/api/export?format=json")
+    assert "attachment" in r.headers.get("Content-Disposition", "")
+    assert ".json" in r.headers.get("Content-Disposition", "")
+
+def test_export_json_excludes_hidden(flask_client):
+    r1 = flask_client.post("/api/items", json={"title": "Visible"})
+    r2 = flask_client.post("/api/items", json={"title": "Hidden"})
+    hidden_id = r2.get_json()["id"]
+    flask_client.delete(f"/api/items/{hidden_id}")
+    r = flask_client.get("/api/export?format=json")
+    data = r.get_json()
+    titles = [item["title"] for item in data]
+    assert "Visible" in titles
+    assert "Hidden" not in titles
+
+def test_export_json_includes_visible(flask_client):
+    flask_client.post("/api/items", json={"title": "MyProject"})
+    r = flask_client.get("/api/export?format=json")
+    data = r.get_json()
+    assert any(item["title"] == "MyProject" for item in data)
+
+def test_export_csv_returns_200(flask_client):
+    r = flask_client.get("/api/export?format=csv")
+    assert r.status_code == 200
+
+def test_export_csv_content_type(flask_client):
+    r = flask_client.get("/api/export?format=csv")
+    assert "text/csv" in r.content_type
+
+def test_export_csv_has_headers(flask_client):
+    r = flask_client.get("/api/export?format=csv")
+    first_line = r.data.decode("utf-8").split("\n")[0].strip()
+    assert "id" in first_line
+    assert "title" in first_line
+    assert "status" in first_line
+    assert "notes" in first_line
+
+def test_export_csv_excludes_hidden(flask_client):
+    flask_client.post("/api/items", json={"title": "CSVVisible"})
+    r2 = flask_client.post("/api/items", json={"title": "CSVHidden"})
+    flask_client.delete(f"/api/items/{r2.get_json()['id']}")
+    r = flask_client.get("/api/export?format=csv")
+    body = r.data.decode("utf-8")
+    assert "CSVVisible" in body
+    assert "CSVHidden" not in body
+
+def test_export_default_format_is_json(flask_client):
+    r = flask_client.get("/api/export")
+    assert r.status_code == 200
+    assert "application/json" in r.content_type
+
+def test_export_invalid_format_returns_400(flask_client):
+    r = flask_client.get("/api/export?format=xml")
+    assert r.status_code == 400
+
+
 def test_index_serves_html(flask_client, tmp_path):
     import server as server_module
     # Point Flask static folder to a temp dir with a fake index.html
@@ -165,3 +232,30 @@ def test_index_serves_html(flask_client, tmp_path):
         assert r.status_code == 200
     finally:
         server_module.app.static_folder = original_static
+
+
+# ── API docs endpoint tests ───────────────────────────────────────────────────
+
+def test_api_docs_returns_200(flask_client):
+    r = flask_client.get("/api/docs")
+    assert r.status_code == 200
+
+def test_api_docs_returns_html(flask_client):
+    r = flask_client.get("/api/docs")
+    assert "text/html" in r.content_type
+
+def test_api_docs_contains_endpoints(flask_client):
+    r = flask_client.get("/api/docs")
+    body = r.data.decode("utf-8")
+    assert "/api/items" in body
+    assert "/api/stats" in body
+    assert "/api/sync" in body
+    assert "/api/health" in body
+    assert "/api/config" in body
+    assert "/api/export" in body
+
+def test_api_docs_matches_dark_theme(flask_client):
+    r = flask_client.get("/api/docs")
+    body = r.data.decode("utf-8")
+    # Should use the same dark theme CSS variables
+    assert "--bg-root" in body or "#080d14" in body

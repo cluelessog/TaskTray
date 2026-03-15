@@ -117,3 +117,9 @@ class TestDragAndDrop:
     def test_drag_state_flag(self, html):
         """State has a dragging flag and auto-refresh checks it."""
         assert 'dragging' in html
+
+
+class TestExport:
+    def test_export_button_exists(self, html):
+        """Export button exists in the header."""
+        assert 'export' in html.lower() or 'download' in html.lower()

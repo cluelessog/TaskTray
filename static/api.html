@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskTray API Docs</title>
+<style>
+:root {
+  --bg-root: #080d14;
+  --bg-card: #0c1520;
+  --border: #1e293b;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --cyan: #00e5cc;
+  --green: #34d399;
+  --yellow: #fbbf24;
+  --red: #ef4444;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Code', 'Consolas', monospace;
+  --font-sans: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg-root); color: var(--text); font-family: var(--font-sans); padding: 32px; }
+h1 { color: var(--cyan); font-family: var(--font-mono); margin-bottom: 24px; }
+h2 { color: var(--text); margin: 24px 0 8px; font-size: 1rem; }
+.endpoint { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin-bottom: 12px; }
+.method { font-family: var(--font-mono); font-size: 0.8rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin-right: 8px; }
+.get { background: rgba(52,211,153,0.15); color: var(--green); }
+.post { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.patch { background: rgba(0,229,204,0.15); color: var(--cyan); }
+.delete { background: rgba(239,68,68,0.15); color: var(--red); }
+.path { font-family: var(--font-mono); font-size: 0.9rem; }
+.desc { color: var(--text-muted); margin-top: 6px; font-size: 0.875rem; }
+</style>
+</head>
+<body>
+<h1>TaskTray API</h1>
+
+<div class="endpoint">
+  <span class="method get">GET</span><span class="path">/api/items</span>
+  <p class="desc">Return all non-hidden dashboard items.</p>
+</div>
+
+<div class="endpoint">
+  <span class="method post">POST</span><span class="path">/api/items</span>
+  <p class="desc">Create a new manual item. Body: <code>{"title": "...", "status": "active", "priority": "p1", "notes": "..."}</code></p>
+</div>
+
+<div class="endpoint">
+  <span class="method patch">PATCH</span><span class="path">/api/items/:id</span>
+  <p class="desc">Update fields on an existing item.</p>
+</div>
+
+<div class="endpoint">
+  <span class="method delete">DELETE</span><span class="path">/api/items/:id</span>
+  <p class="desc">Hide/delete an item from the dashboard.</p>
+</div>
+
+<div class="endpoint">
+  <span class="method get">GET</span><span class="path">/api/stats</span>
+  <p class="desc">Return aggregate stats (total, by_source, by_status).</p>
+</div>
+
+<div class="endpoint">
+  <span class="method post">POST</span><span class="path">/api/sync</span>
+  <p class="desc">Trigger an immediate disk + Obsidian sync.</p>
+</div>
+
+<div class="endpoint">
+  <span class="method get">GET</span><span class="path">/api/health</span>
+  <p class="desc">Health check: uptime, last sync time, item count.</p>
+</div>
+
+<div class="endpoint">
+  <span class="method get">GET</span><span class="path">/api/config</span>
+  <p class="desc">Return sanitized configuration (scan_dirs, vault_path, categories).</p>
+</div>
+
+<div class="endpoint">
+  <span class="method get">GET</span><span class="path">/api/export?format=json|csv</span>
+  <p class="desc">Export all non-hidden items as a JSON or CSV download. Defaults to JSON.</p>
+</div>
+
+<div class="endpoint">
+  <span class="method get">GET</span><span class="path">/api/docs</span>
+  <p class="desc">This page.</p>
+</div>
+
+</body>
+</html>
