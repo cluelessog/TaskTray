@@ -293,6 +293,28 @@ def run_sync(force_refresh: bool = False) -> None:
                     promoted_count += 1
             if promoted_count:
                 log.info(f"  Auto-promoted {promoted_count} projects from backlog to active")
+
+        # Git-recency auto-promote: promote backlog items with recent git commits
+        git_recency_days = config.get("scanner", {}).get("git_recency_days", 14)
+        if git_recency_days > 0:
+            git_promoted = 0
+            now = datetime.now()
+            for item in disk_items:
+                if (item.get("status") == "backlog"
+                        and not store.has_status_override(item["id"])
+                        and not store.is_manual_item(item["id"])):
+                    last_commit = item.get("git_last_commit")
+                    if not last_commit:
+                        continue
+                    try:
+                        commit_date = datetime.fromisoformat(str(last_commit))
+                        if (now - commit_date).days <= git_recency_days:
+                            store.update_item(item["id"], {"status": "active"})
+                            git_promoted += 1
+                    except (ValueError, TypeError):
+                        continue
+            if git_promoted:
+                log.info(f"  Git-recency promoted {git_promoted} projects from backlog to active")
     except Exception as e:
         log.error(f"  Disk scan failed: {e}")
 
