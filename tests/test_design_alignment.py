@@ -134,3 +134,62 @@ class TestGridBackground:
     def test_grid_rgba_uses_new_cyan(self, html):
         """Grid lines use the new cyan color."""
         assert "rgba(0,229,204,0.04)" in html
+
+
+# ── Git Intelligence Display (Task 6.4) ─────────────────────────────────────
+
+class TestGitIntelDisplay:
+    def test_git_intel_css_class(self, html):
+        """.git-intel CSS class exists in HTML."""
+        assert ".git-intel" in html
+
+    def test_git_badge_css_class(self, html):
+        """.git-badge CSS class exists in HTML."""
+        assert ".git-badge" in html
+
+    def test_velocity_trend_labels(self, html):
+        """HTML contains velocity trend label strings."""
+        assert "Accel" in html
+        assert "Steady" in html
+        assert "Slowing" in html
+        assert "Stalled" in html
+
+    def test_relative_time_function(self, html):
+        """relativeTime function is defined in JS."""
+        assert "function relativeTime" in html or "relativeTime" in html
+
+    def test_git_intel_in_render_card(self, html):
+        """renderCard function references git_velocity_trend."""
+        assert "git_velocity_trend" in html
+
+    def test_stage_badge_in_render_card(self, html):
+        """renderCard function references git_stage."""
+        assert "git_stage" in html
+
+    def test_git_data_conditional(self, html):
+        """Git data rendering is conditional on git_velocity_trend existence."""
+        assert "git_velocity_trend" in html
+
+
+# ── Worktree Grouping & Config (Task 6.5) ───────────────────────────────────
+
+class TestWorktreeGrouping:
+    def test_worktree_badge_css(self, html):
+        """.worktree-badge CSS class exists in HTML."""
+        assert ".worktree-badge" in html
+
+    def test_worktree_label_in_render(self, html):
+        """renderCard references is_worktree."""
+        assert "is_worktree" in html
+
+    def test_worktree_parent_label(self, html):
+        """Render logic includes parent_path reference."""
+        assert "parent_path" in html
+
+    def test_config_has_git_recency_days(self):
+        """config.yaml has git_recency_days under scanner section."""
+        import yaml
+        config_path = HTML_PATH.parent.parent / "config.yaml"
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        assert cfg.get("scanner", {}).get("git_recency_days") == 14

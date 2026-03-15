@@ -28,6 +28,7 @@ from flask_cors import CORS
 from scanner import scan_for_projects
 from obsidian_reader import read_obsidian_items
 from store import DataStore
+import git_intel
 
 try:
     import webview
@@ -239,8 +240,33 @@ def api_docs() -> Any:
 
 # ── Sync Logic ───────────────────────────────────────────
 
+def _apply_git_intelligence(disk_items: list, cfg: dict) -> list:
+    """Merge git intelligence data into disk items.
+
+    Calls ``git_intel.analyze_projects()`` once and maps selected fields onto
+    each item using ``.get()`` with safe defaults (the outer exception handler
+    in ``analyze_projects`` returns a minimal dict missing metrics fields).
+    """
+    try:
+        results = git_intel.analyze_projects(disk_items, cfg)
+    except Exception as e:
+        log.warning("git_intel.analyze_projects failed: %s", e)
+        results = {}
+
+    for item in disk_items:
+        path = item.get("path", "")
+        data = results.get(path, {})
+        item["git_velocity_trend"] = data.get("velocity_trend", "stalled")
+        item["git_commit_count"] = data.get("total_commits", 0)
+        item["git_last_commit"] = data.get("last_commit_date", None)
+        item["git_stage"] = data.get("stage", "stalled")
+        item["git_commit_types"] = data.get("commit_types", {})
+
+    return disk_items
+
+
 def run_sync(force_refresh: bool = False) -> None:
-    """Run disk scan + obsidian read."""
+    """Run disk scan + obsidian read + git intelligence."""
     global _last_sync_time
     log.info("Syncing...")
     t0 = time.time()
@@ -248,6 +274,10 @@ def run_sync(force_refresh: bool = False) -> None:
     # Scan disk
     try:
         disk_items = scan_for_projects(config, force_refresh=force_refresh)
+
+        # Merge git intelligence data
+        _apply_git_intelligence(disk_items, config)
+
         store.update_disk_items(disk_items)
         log.info(f"  Disk: found {len(disk_items)} projects")
         # Auto-promote backlog items with recent activity
@@ -263,6 +293,29 @@ def run_sync(force_refresh: bool = False) -> None:
                     promoted_count += 1
             if promoted_count:
                 log.info(f"  Auto-promoted {promoted_count} projects from backlog to active")
+
+        # Git-recency auto-promote: promote backlog items with recent git commits
+        git_recency_days = config.get("scanner", {}).get("git_recency_days", 14)
+        if git_recency_days > 0:
+            git_promoted = 0
+            now = datetime.now()
+            for item in disk_items:
+                if (item.get("status") == "backlog"
+                        and not item.get("has_recent_activity")  # skip if already promoted by fs activity
+                        and not store.has_status_override(item["id"])
+                        and not store.is_manual_item(item["id"])):
+                    last_commit = item.get("git_last_commit")
+                    if not last_commit:
+                        continue
+                    try:
+                        commit_date = datetime.fromisoformat(str(last_commit))
+                        if (now - commit_date).days <= git_recency_days:
+                            store.update_item(item["id"], {"status": "active"})
+                            git_promoted += 1
+                    except (ValueError, TypeError):
+                        continue
+            if git_promoted:
+                log.info(f"  Git-recency promoted {git_promoted} projects from backlog to active")
     except Exception as e:
         log.error(f"  Disk scan failed: {e}")
 

@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scanner import _detect_type, _extract_description, _guess_category, scan_for_projects, ScanCache
+from scanner import _detect_type, _extract_description, _guess_category, scan_for_projects, ScanCache, _detect_worktree, _build_project_info
 
 
 # ── _detect_type ──────────────────────────────────────────────────────────────
@@ -478,3 +478,84 @@ class TestScanCache:
 
         assert key3 != key1
         assert key3 != key2
+
+
+# ── Worktree Detection (Task 6.1) ────────────────────────────────────────────
+
+class TestWorktreeDetection:
+    def test_detect_worktree_regular_repo(self, tmp_path):
+        """Regular repo with .git directory returns None."""
+        (tmp_path / ".git").mkdir()
+        assert _detect_worktree(tmp_path) is None
+
+    def test_detect_worktree_valid(self, tmp_path):
+        """Worktree with .git file containing gitdir: returns correct parent and branch."""
+        parent_git = tmp_path / "parent" / ".git"
+        parent_git.mkdir(parents=True)
+        wt_dir = parent_git / "worktrees" / "feature-branch"
+        wt_dir.mkdir(parents=True)
+
+        worktree = tmp_path / "worktree-dir"
+        worktree.mkdir()
+        git_file = worktree / ".git"
+        git_file.write_text(f"gitdir: {wt_dir}\n")
+
+        result = _detect_worktree(worktree)
+        assert result is not None
+        assert result["is_worktree"] is True
+        assert result["parent_path"] == str(tmp_path / "parent")
+        assert result["worktree_branch"] == "feature-branch"
+
+    def test_detect_worktree_missing_git(self, tmp_path):
+        """No .git at all returns None."""
+        assert _detect_worktree(tmp_path) is None
+
+    def test_detect_worktree_malformed_gitdir(self, tmp_path):
+        """Git file without gitdir: line returns None."""
+        git_file = tmp_path / ".git"
+        git_file.write_text("something else entirely\n")
+        assert _detect_worktree(tmp_path) is None
+
+    def test_detect_worktree_windows_paths(self, tmp_path):
+        """Backslash paths in gitdir: line are normalized correctly."""
+        parent_git = tmp_path / "parent" / ".git"
+        parent_git.mkdir(parents=True)
+        wt_dir = parent_git / "worktrees" / "my-branch"
+        wt_dir.mkdir(parents=True)
+
+        worktree = tmp_path / "wt"
+        worktree.mkdir()
+        # Write with backslashes like Windows would
+        win_path = str(wt_dir).replace("/", "\\")
+        (worktree / ".git").write_text(f"gitdir: {win_path}\n")
+
+        result = _detect_worktree(worktree)
+        assert result is not None
+        assert "\\" not in result["parent_path"]
+        assert result["worktree_branch"] == "my-branch"
+
+    def test_build_project_info_marks_worktree(self, tmp_path):
+        """Worktree project has is_worktree=True and parent_path set."""
+        parent_git = tmp_path / "parent" / ".git"
+        parent_git.mkdir(parents=True)
+        wt_dir = parent_git / "worktrees" / "feat"
+        wt_dir.mkdir(parents=True)
+
+        worktree = tmp_path / "feat-wt"
+        worktree.mkdir()
+        (worktree / ".git").write_text(f"gitdir: {wt_dir}\n")
+
+        info = _build_project_info(worktree, {".git"})
+        assert info["is_worktree"] is True
+        assert info["parent_path"] == str(tmp_path / "parent")
+        assert info["worktree_branch"] == "feat"
+
+    def test_build_project_info_regular_not_worktree(self, tmp_path):
+        """Regular repo has is_worktree=False."""
+        proj = tmp_path / "myproj"
+        proj.mkdir()
+        (proj / ".git").mkdir()
+
+        info = _build_project_info(proj, {".git"})
+        assert info["is_worktree"] is False
+        assert "parent_path" not in info or info.get("parent_path") is None
