@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scanner import _detect_type, _extract_description, _guess_category, scan_for_projects, ScanCache, _detect_worktree, _build_project_info
+from scanner import _detect_type, _extract_description, _guess_category, scan_for_projects, ScanCache, _detect_worktree, _build_project_info, _scan_with_timeout
 
 
 # ── _detect_type ──────────────────────────────────────────────────────────────
@@ -559,3 +559,48 @@ class TestWorktreeDetection:
         info = _build_project_info(proj, {".git"})
         assert info["is_worktree"] is False
         assert "parent_path" not in info or info.get("parent_path") is None
+
+
+class TestWorktreeDiscovery:
+    """Scanner must descend into .claude/worktrees/ even after finding a parent project."""
+
+    def test_scanner_finds_worktrees_under_parent(self, tmp_path):
+        """Worktrees at <project>/.claude/worktrees/<branch>/ are discovered."""
+        # Create parent project with .git dir
+        parent = tmp_path / "MyProject"
+        parent.mkdir()
+        (parent / ".git").mkdir()
+
+        # Create a worktree inside .claude/worktrees/
+        wt = parent / ".claude" / "worktrees" / "feature-x"
+        wt.mkdir(parents=True)
+        # Worktree .git file pointing back to parent
+        parent_git_wt = parent / ".git" / "worktrees" / "feature-x"
+        parent_git_wt.mkdir(parents=True)
+        (wt / ".git").write_text(f"gitdir: {parent_git_wt}\n")
+
+        results = _scan_with_timeout(tmp_path, max_depth=5, markers={".git"},
+                                     ignore_dirs={"node_modules", "__pycache__"},
+                                     timeout_seconds=5)
+        paths = [r["path"] for r in results]
+        assert str(parent) in paths, "Parent project not found"
+        assert str(wt) in paths, "Worktree under .claude/worktrees/ not found"
+
+    def test_scanner_worktree_has_parent_path(self, tmp_path):
+        """Discovered worktree has correct parent_path and is_worktree=True."""
+        parent = tmp_path / "Proj"
+        parent.mkdir()
+        (parent / ".git").mkdir()
+
+        wt = parent / ".claude" / "worktrees" / "bugfix"
+        wt.mkdir(parents=True)
+        parent_git_wt = parent / ".git" / "worktrees" / "bugfix"
+        parent_git_wt.mkdir(parents=True)
+        (wt / ".git").write_text(f"gitdir: {parent_git_wt}\n")
+
+        results = _scan_with_timeout(tmp_path, max_depth=5, markers={".git"},
+                                     ignore_dirs={"node_modules", "__pycache__"},
+                                     timeout_seconds=5)
+        wt_items = [r for r in results if r.get("is_worktree")]
+        assert len(wt_items) == 1
+        assert wt_items[0]["parent_path"] == str(parent)

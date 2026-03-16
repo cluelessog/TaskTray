@@ -577,7 +577,7 @@ function buildGroupedItems(arr) {
   });
   const result = { grouped: [], orphans: orphans, standalone: [] };
   standalone.forEach(item => {
-    const entry = parentMap[item.path];
+    const entry = parentMap[norm(item.path)];
     if (entry && entry.worktrees.length > 0) { result.grouped.push(entry); }
     else { result.standalone.push(item); }
   });

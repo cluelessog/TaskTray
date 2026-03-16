@@ -244,7 +244,8 @@ def _scan_with_timeout(
                 seen_paths.add(str(root_path))
                 project = _build_project_info(root_path, found_markers, activity_threshold_minutes)
                 results.append(project)
-                dirs.clear()
+                # Keep descending into .claude/worktrees/ for worktree discovery
+                dirs[:] = [d for d in dirs if d == ".claude"]
 
     thread = threading.Thread(target=_do_scan, daemon=True)
     thread.start()
