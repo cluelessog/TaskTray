@@ -605,6 +605,27 @@ class TestWorktreeDiscovery:
         assert len(wt_items) == 1
         assert wt_items[0]["parent_path"] == str(parent)
 
+    def test_scanner_finds_worktrees_beyond_max_depth(self, tmp_path):
+        """Worktrees at depth > max_depth are still found via direct scan."""
+        parent = tmp_path / "MyProject"
+        parent.mkdir()
+        (parent / ".git").mkdir()
+
+        # Worktree at depth 4 from tmp_path: MyProject/.claude/worktrees/feat/
+        wt = parent / ".claude" / "worktrees" / "feat"
+        wt.mkdir(parents=True)
+        parent_git_wt = parent / ".git" / "worktrees" / "feat"
+        parent_git_wt.mkdir(parents=True)
+        (wt / ".git").write_text(f"gitdir: {parent_git_wt}\n")
+
+        # max_depth=2 would normally miss depth-4 worktree
+        results = _scan_with_timeout(tmp_path, max_depth=2, markers={".git"},
+                                     ignore_dirs={"node_modules", "__pycache__"},
+                                     timeout_seconds=5)
+        paths = [r["path"] for r in results]
+        assert str(parent) in paths, "Parent project not found"
+        assert str(wt) in paths, "Worktree beyond max_depth not found by direct scan"
+
 
 class TestNormalizeToNative:
     """_normalize_to_native converts WSL /mnt/X/ paths to X:/ on Windows."""

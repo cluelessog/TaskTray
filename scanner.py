@@ -266,8 +266,19 @@ def _scan_with_timeout(
                 seen_paths.add(str(root_path))
                 project = _build_project_info(root_path, found_markers, activity_threshold_minutes)
                 results.append(project)
-                # Keep descending into .claude/worktrees/ for worktree discovery
-                dirs[:] = [d for d in dirs if d == ".claude"]
+                # Directly scan .claude/worktrees/ for worktree subdirs
+                # (bypasses depth limit which would prevent discovery)
+                wt_base = root_path / ".claude" / "worktrees"
+                if wt_base.is_dir():
+                    for wt_dir in wt_base.iterdir():
+                        if wt_dir.is_dir() and str(wt_dir) not in seen_paths:
+                            wt_entries = set(os.listdir(wt_dir))
+                            wt_markers = wt_entries & markers
+                            if wt_markers:
+                                seen_paths.add(str(wt_dir))
+                                wt_project = _build_project_info(wt_dir, wt_markers, activity_threshold_minutes)
+                                results.append(wt_project)
+                dirs.clear()
 
     thread = threading.Thread(target=_do_scan, daemon=True)
     thread.start()
