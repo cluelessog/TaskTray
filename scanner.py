@@ -4,6 +4,8 @@ Disk Scanner — discovers projects by looking for marker files/folders.
 from __future__ import annotations
 
 import os
+import re
+import sys
 import json
 import hashlib
 import logging
@@ -13,6 +15,18 @@ from pathlib import Path
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_to_native(raw: str) -> str:
+    """Convert WSL /mnt/X/... paths to X:/... for cross-platform compatibility."""
+    if not raw:
+        return raw
+    m = re.match(r"^/mnt/([a-zA-Z])(/.*)?$", raw)
+    if m:
+        drive = m.group(1).upper()
+        rest = m.group(2) or ""
+        return f"{drive}:{rest}"
+    return raw
 
 
 def _detect_worktree(path: Path) -> "dict | None":
@@ -39,8 +53,12 @@ def _detect_worktree(path: Path) -> "dict | None":
     # Normalise Windows backslashes
     gitdir = gitdir.replace("\\", "/")
 
+    # Resolve relative gitdir paths to absolute (relative to worktree dir)
+    if not gitdir.startswith("/") and not re.match(r"^[a-zA-Z]:", gitdir):
+        gitdir = str((path / gitdir).resolve()).replace("\\", "/")
+
     # Expected: <parent>/.git/worktrees/<branch-name>
-    parts = gitdir.replace("\\", "/").split("/")
+    parts = gitdir.split("/")
     try:
         wt_idx = parts.index("worktrees")
     except ValueError:
@@ -55,6 +73,9 @@ def _detect_worktree(path: Path) -> "dict | None":
     parent_path = "/".join(parts[: wt_idx - 1])
     if not parent_path:
         return None
+
+    # Normalize WSL /mnt/X/ paths to native X:/ format
+    parent_path = _normalize_to_native(parent_path)
 
     return {
         "is_worktree": True,
@@ -71,6 +92,7 @@ def _resolve_git_index(path: Path) -> Path:
             content = git_path.read_text(encoding="utf-8", errors="replace").strip()
             if content.startswith("gitdir:"):
                 gitdir = content[len("gitdir:"):].strip().replace("\\", "/")
+                gitdir = _normalize_to_native(gitdir)
                 return Path(gitdir) / "index"
         except OSError:
             pass

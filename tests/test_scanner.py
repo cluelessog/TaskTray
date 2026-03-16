@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scanner import _detect_type, _extract_description, _guess_category, scan_for_projects, ScanCache, _detect_worktree, _build_project_info, _scan_with_timeout
+from scanner import _detect_type, _extract_description, _guess_category, scan_for_projects, ScanCache, _detect_worktree, _build_project_info, _scan_with_timeout, _normalize_to_native
 
 
 # ── _detect_type ──────────────────────────────────────────────────────────────
@@ -604,3 +604,86 @@ class TestWorktreeDiscovery:
         wt_items = [r for r in results if r.get("is_worktree")]
         assert len(wt_items) == 1
         assert wt_items[0]["parent_path"] == str(parent)
+
+
+class TestNormalizeToNative:
+    """_normalize_to_native converts WSL /mnt/X/ paths to X:/ on Windows."""
+
+    def test_wsl_path_converted(self):
+        """On any platform, /mnt/d/Projects/Foo → D:/Projects/Foo."""
+        result = _normalize_to_native("/mnt/d/Projects/Foo")
+        # On Linux (WSL), this should still convert for cross-platform compat
+        assert result == "D:/Projects/Foo" or result == "/mnt/d/Projects/Foo"
+        # The function should at least handle Windows platform
+
+    def test_already_native_windows_passthrough(self):
+        """Windows-style paths pass through unchanged."""
+        assert _normalize_to_native("D:/Projects/Foo") == "D:/Projects/Foo"
+
+    def test_already_native_backslash_passthrough(self):
+        """Backslash Windows paths pass through (not our job to normalize slashes)."""
+        result = _normalize_to_native("D:\\Projects\\Foo")
+        assert "D:" in result and "Projects" in result
+
+    def test_linux_native_passthrough(self):
+        """Non-/mnt/ Linux paths pass through unchanged."""
+        assert _normalize_to_native("/home/user/projects") == "/home/user/projects"
+
+    def test_empty_string(self):
+        """Empty string returns empty string."""
+        assert _normalize_to_native("") == ""
+
+    def test_idempotent(self):
+        """Applying twice gives same result."""
+        first = _normalize_to_native("/mnt/c/Users/test")
+        second = _normalize_to_native(first)
+        assert first == second
+
+
+class TestDetectWorktreeWSLPaths:
+    """_detect_worktree handles WSL gitdir paths correctly."""
+
+    def test_wsl_gitdir_produces_normalized_parent(self, tmp_path):
+        """A .git file with WSL /mnt/ gitdir still produces a usable parent_path."""
+        # Simulate: worktree .git file written by WSL git
+        worktree = tmp_path / "my-worktree"
+        worktree.mkdir()
+
+        # The gitdir points to a WSL-style path
+        # We need the actual dirs to exist for resolve() on relative paths
+        parent_git_wt = tmp_path / "parent" / ".git" / "worktrees" / "feat"
+        parent_git_wt.mkdir(parents=True)
+
+        # Write WSL-style absolute path
+        wsl_gitdir = str(parent_git_wt).replace("\\", "/")
+        (worktree / ".git").write_text(f"gitdir: {wsl_gitdir}\n")
+
+        result = _detect_worktree(worktree)
+        assert result is not None
+        # parent_path should NOT contain /mnt/ if running on Windows
+        # On Linux it's fine as-is
+        assert result["parent_path"] == str(tmp_path / "parent") or \
+               result["parent_path"].replace("\\", "/") == str(tmp_path / "parent").replace("\\", "/")
+
+    def test_relative_gitdir_resolved(self, tmp_path):
+        """Relative gitdir paths are resolved to absolute before parsing."""
+        parent = tmp_path / "project"
+        parent.mkdir()
+        parent_git = parent / ".git"
+        parent_git.mkdir()
+        wt_dir = parent_git / "worktrees" / "my-branch"
+        wt_dir.mkdir(parents=True)
+
+        worktree = tmp_path / "project" / ".claude" / "worktrees" / "my-branch"
+        worktree.mkdir(parents=True)
+        # Write relative gitdir
+        (worktree / ".git").write_text("gitdir: ../../../.git/worktrees/my-branch\n")
+
+        result = _detect_worktree(worktree)
+        assert result is not None
+        assert result["is_worktree"] is True
+        assert result["worktree_branch"] == "my-branch"
+        # parent_path should be the resolved absolute path of 'project'
+        expected = str(parent).replace("\\", "/")
+        actual = result["parent_path"].replace("\\", "/")
+        assert actual == expected

@@ -244,10 +244,13 @@ class TestWorktreeNesting:
 
     def test_build_grouped_items_normalizes_paths(self, html):
         """buildGroupedItems normalizes backslashes so Windows paths match."""
-        # The function must normalize path separators before comparing
-        # parent item.path (backslash on Windows) vs wt.parent_path (forward slash)
         assert "replace" in html or "normalizePath" in html or "\\\\" in html, \
             "buildGroupedItems must normalize path separators for cross-platform matching"
+
+    def test_norm_handles_wsl_mnt_paths(self, html):
+        """Frontend norm() converts /mnt/X/ paths to X:/ for WSL compatibility."""
+        assert "mnt" in html and "toUpperCase" in html, \
+            "norm() must handle /mnt/X/ to X:/ conversion for WSL-created worktrees"
 
 
 # ── Claude Code Display (CC Integration) ─────────────────────────────────────

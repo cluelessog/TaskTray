@@ -560,7 +560,7 @@ function showToast(msg) {
 
 // ── Worktree Grouping ────────────────────────
 function buildGroupedItems(arr) {
-  const norm = p => (p || '').replace(/\\/g, '/');
+  const norm = p => (p || '').replace(/\\/g, '/').replace(/^\/mnt\/([a-zA-Z])(\/.*)?$/, (_, d, rest) => d.toUpperCase() + ':' + (rest || ''));
   const parentMap = {};
   const worktrees = [];
   const standalone = [];
