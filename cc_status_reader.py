@@ -206,9 +206,20 @@ class CCStatusReader:
 
         return list(reversed(decisions))  # newest first
 
+    @staticmethod
+    def _normalize_path(raw: str) -> Path:
+        """Normalize a path, converting Windows drive letters to WSL mount points if needed."""
+        import platform
+        # On Linux (including WSL), convert D:/... or D:\... to /mnt/d/...
+        if platform.system() == "Linux" and len(raw) >= 2 and raw[1] in (":", ":\\"):
+            drive = raw[0].lower()
+            rest = raw[2:].replace("\\", "/").lstrip("/")
+            return Path(f"/mnt/{drive}/{rest}")
+        return Path(raw).expanduser().resolve()
+
     def read_project(self, project: dict) -> dict:
         """Read full status for a single project. Returns a TaskTray-compatible item."""
-        path = Path(project["path"]).expanduser().resolve()
+        path = self._normalize_path(project["path"])
         name = project["name"]
         proj_id = self._make_id(name)
 
@@ -316,6 +327,13 @@ class CCStatusReader:
                     "cc": {"error": str(e)},
                 })
         return results
+
+    def read_project_by_name(self, name: str) -> Optional[dict]:
+        """Look up a single project by name. Returns None if not found."""
+        for project in self._projects:
+            if project.get("name", "").lower() == name.lower():
+                return self.read_project(project)
+        return None
 
     def get_summary(self) -> dict:
         """Get a cross-project summary for the dashboard header."""

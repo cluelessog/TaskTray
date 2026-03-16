@@ -56,6 +56,36 @@ class TestCCStatusReader:
         assert "cc" in item
         assert item["cc"]["phase"] != "unknown"  # STATUS.md has a phase
 
+    def test_windows_path_normalized_on_wsl(self):
+        """Windows paths like D:/Projects/X should resolve to /mnt/d/Projects/X on WSL."""
+        from cc_status_reader import CCStatusReader
+        project_root = str(pathlib.Path(__file__).resolve().parent.parent)
+        # Use Windows-style path pointing to the same directory
+        win_path = project_root.replace("/mnt/d/", "D:/")
+        reader = CCStatusReader({"claude_code": {"projects": [
+            {"name": "TaskTray", "path": win_path, "category": "dev"}
+        ]}})
+        items = reader.read_all()
+        assert len(items) == 1
+        item = items[0]
+        # Should find the STATUS.md despite Windows path
+        assert item["cc"]["phase"] != "unknown", \
+            f"Windows path '{win_path}' was not normalized — phase is 'unknown'"
+        assert item["cc"]["error"] is None
+
+    def test_read_project_by_name(self):
+        """read_project_by_name returns the right project or None."""
+        from cc_status_reader import CCStatusReader
+        project_root = str(pathlib.Path(__file__).resolve().parent.parent)
+        reader = CCStatusReader({"claude_code": {"projects": [
+            {"name": "TaskTray", "path": project_root, "category": "dev"}
+        ]}})
+        item = reader.read_project_by_name("TaskTray")
+        assert item is not None
+        assert item["title"] == "TaskTray"
+        # Non-existent project returns None
+        assert reader.read_project_by_name("NoSuchProject") is None
+
 
 # ── Store integration tests ──────────────────────────────────────────────────
 
