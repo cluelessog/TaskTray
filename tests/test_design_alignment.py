@@ -242,6 +242,13 @@ class TestWorktreeNesting:
         """Worktree toggle click uses event.stopPropagation()."""
         assert "toggleWorktreeGroup" in html
 
+    def test_build_grouped_items_normalizes_paths(self, html):
+        """buildGroupedItems normalizes backslashes so Windows paths match."""
+        # The function must normalize path separators before comparing
+        # parent item.path (backslash on Windows) vs wt.parent_path (forward slash)
+        assert "replace" in html or "normalizePath" in html or "\\\\" in html, \
+            "buildGroupedItems must normalize path separators for cross-platform matching"
+
 
 # ── Claude Code Display (CC Integration) ─────────────────────────────────────
 

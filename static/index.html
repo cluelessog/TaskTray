@@ -560,17 +560,18 @@ function showToast(msg) {
 
 // ── Worktree Grouping ────────────────────────
 function buildGroupedItems(arr) {
+  const norm = p => (p || '').replace(/\\/g, '/');
   const parentMap = {};
   const worktrees = [];
   const standalone = [];
   arr.forEach(item => {
     if (item.is_worktree) { worktrees.push(item); }
-    else { parentMap[item.path] = { parent: item, worktrees: [] }; standalone.push(item); }
+    else { parentMap[norm(item.path)] = { parent: item, worktrees: [] }; standalone.push(item); }
   });
   const grouped = [];
   const orphans = [];
   worktrees.forEach(wt => {
-    const key = wt.parent_path;
+    const key = norm(wt.parent_path);
     if (key && parentMap[key]) { parentMap[key].worktrees.push(wt); }
     else { orphans.push(wt); }
   });
