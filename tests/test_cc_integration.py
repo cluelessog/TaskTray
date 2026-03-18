@@ -86,6 +86,67 @@ class TestCCStatusReader:
         # Non-existent project returns None
         assert reader.read_project_by_name("NoSuchProject") is None
 
+    def test_parse_milestones_table_returns_list(self, tmp_path):
+        """_parse_plan_md returns a 'milestones' key with a list."""
+        from cc_status_reader import CCStatusReader
+        plan = tmp_path / "PLAN.md"
+        plan.write_text(
+            "## Milestones\n\n"
+            "| # | Milestone | Status |\n"
+            "|---|-----------|--------|\n"
+            "| 1 | Core: Disk scanner + Flask server | completed |\n"
+            "| 2 | Phase 1: Critical Stability | in_progress |\n"
+        )
+        reader = CCStatusReader({"claude_code": {"projects": []}})
+        result = reader._parse_plan_md(plan)
+        assert "milestones" in result
+        assert isinstance(result["milestones"], list)
+
+    def test_parse_milestones_table_extracts_fields(self, tmp_path):
+        """Each milestone dict has number, name, and status."""
+        from cc_status_reader import CCStatusReader
+        plan = tmp_path / "PLAN.md"
+        plan.write_text(
+            "## Milestones\n\n"
+            "| # | Milestone | Status |\n"
+            "|---|-----------|--------|\n"
+            "| 1 | Core: Disk scanner + Flask server | completed |\n"
+            "| 2 | Phase 1: Critical Stability | in_progress |\n"
+        )
+        reader = CCStatusReader({"claude_code": {"projects": []}})
+        milestones = reader._parse_plan_md(plan)["milestones"]
+        assert len(milestones) == 2
+        assert milestones[0] == {"number": 1, "name": "Core: Disk scanner + Flask server", "status": "completed"}
+        assert milestones[1] == {"number": 2, "name": "Phase 1: Critical Stability", "status": "in_progress"}
+
+    def test_parse_milestones_table_empty_when_absent(self, tmp_path):
+        """Returns empty list when no milestones table in PLAN.md."""
+        from cc_status_reader import CCStatusReader
+        plan = tmp_path / "PLAN.md"
+        plan.write_text("## Objective\n\nJust an objective.\n")
+        reader = CCStatusReader({"claude_code": {"projects": []}})
+        result = reader._parse_plan_md(plan)
+        assert result["milestones"] == []
+
+    def test_milestones_stored_in_cc_item(self):
+        """read_project includes milestones in item['cc']['milestones']."""
+        from cc_status_reader import CCStatusReader
+        project_root = str(pathlib.Path(__file__).resolve().parent.parent)
+        reader = CCStatusReader({"claude_code": {"projects": [
+            {"name": "TaskTray", "path": project_root, "category": "dev"}
+        ]}})
+        item = reader.read_project_by_name("TaskTray")
+        assert item is not None
+        assert "milestones" in item["cc"]
+        assert isinstance(item["cc"]["milestones"], list)
+        # TaskTray's own PLAN.md has milestones
+        assert len(item["cc"]["milestones"]) > 0
+        # Each has number, name, status
+        m = item["cc"]["milestones"][0]
+        assert "number" in m
+        assert "name" in m
+        assert "status" in m
+
 
 # ── Store integration tests ──────────────────────────────────────────────────
 

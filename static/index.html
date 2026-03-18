@@ -305,6 +305,62 @@ body {
   border-radius: 6px; padding: 5px 8px;
 }
 
+/* ── Milestones Checklist ────────────────── */
+.cc-milestones {
+  margin-top: 6px; display: flex; flex-direction: column; gap: 2px;
+  font-size: 10px; font-family: var(--font-mono);
+}
+.cc-milestones-item {
+  display: flex; align-items: center; gap: 5px; color: var(--text-muted);
+}
+.cc-milestones-item.done { color: var(--text-dim); }
+.cc-milestones-check { color: var(--green); font-size: 10px; flex-shrink: 0; }
+.cc-milestones-check.open { color: var(--text-dim); }
+
+/* ── What's Next ─────────────────────────── */
+.cc-whats-next {
+  margin-top: 5px; font-size: 10px; font-family: var(--font-mono);
+  color: var(--cyan); display: flex; gap: 5px; align-items: flex-start;
+}
+.cc-whats-next-label {
+  color: var(--text-dim); flex-shrink: 0; font-size: 9px; padding-top: 1px;
+}
+
+/* ── Activity Log ────────────────────────── */
+.cc-activity-log {
+  margin-top: 8px; display: flex; flex-direction: column; gap: 4px;
+}
+.cc-activity-entry {
+  display: flex; gap: 6px; align-items: flex-start;
+  font-size: 10px; font-family: var(--font-mono);
+  padding: 4px 6px; background: rgba(0,0,0,0.2); border-radius: 4px;
+  border-left: 2px solid var(--border);
+}
+.cc-activity-time { color: var(--text-dim); flex-shrink: 0; font-size: 9px; padding-top: 1px; }
+.cc-activity-summary { color: var(--text-muted); flex: 1; line-height: 1.4; }
+.cc-activity-type {
+  font-size: 9px; padding: 1px 5px; border-radius: 8px; flex-shrink: 0;
+  background: var(--cyan-bg); color: var(--cyan);
+}
+.cc-activity-type.fix { background: rgba(239,68,68,0.12); color: var(--red); }
+.cc-activity-type.refactor { background: rgba(167,139,250,0.12); color: var(--purple); }
+.cc-activity-type.planning { background: var(--yellow-bg); color: var(--yellow); }
+
+/* ── Commit Types ────────────────────────── */
+.cc-commit-types {
+  display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;
+}
+.cc-commit-tag {
+  font-size: 9px; padding: 1px 6px; border-radius: 8px;
+  font-family: var(--font-mono); font-weight: 500;
+}
+
+/* ── Sparkline ───────────────────────────── */
+.cc-sparkline {
+  display: inline-flex; align-items: flex-end; gap: 2px;
+  margin-top: 4px; height: 16px; vertical-align: bottom;
+}
+
 .card-expanded {
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
   animation: slideDown 0.15s ease;
@@ -720,15 +776,29 @@ function render() {
   }
 
   if (view === 'board') {
+    // Pre-collect all worktrees keyed by normalized parent_path
+    const norm = p => (p || '').replace(/\\/g, '/').replace(/^\/mnt\/([a-zA-Z])(\/.*)?$/, (_, d, rest) => d.toUpperCase() + ':' + (rest || ''));
+    const allWorktrees = filtered.filter(i => i.is_worktree);
+    const wtByParent = {};
+    allWorktrees.forEach(wt => { const k = norm(wt.parent_path); if (!wtByParent[k]) wtByParent[k] = []; wtByParent[k].push(wt); });
+    const nonWorktrees = filtered.filter(i => !i.is_worktree);
+
     html += `<div class="board-grid">`;
     STATUS_OPTS.filter(s=>s.id!=='done').forEach(status => {
-      const colItems = filtered.filter(i=>i.status===status.id)
+      const colParents = nonWorktrees.filter(i=>i.status===status.id)
         .sort((a,b) => ['p0','p1','p2','p3'].indexOf(a.priority) - ['p0','p1','p2','p3'].indexOf(b.priority));
+      // Attach worktrees to parents in this column regardless of worktree status
+      const colItems = [];
+      colParents.forEach(item => {
+        colItems.push(item);
+        const wts = wtByParent[norm(item.path)];
+        if (wts) wts.forEach(wt => colItems.push(wt));
+      });
       html += `<div class="board-col" ondragover="onDragOver(event)" ondrop="onDrop(event,'${status.id}')" ondragleave="onDragLeave(event)">
         <div class="col-header">
           <span class="col-dot" style="background:${status.color}"></span>
           <span class="col-title">${status.label}</span>
-          <span class="col-count">${colItems.length}</span>
+          <span class="col-count">${colParents.length}</span>
         </div>`;
       if (colItems.length === 0) html += `<p class="col-empty">No items</p>`;
       const colGroups = buildGroupedItems(colItems);
@@ -776,6 +846,23 @@ function render() {
   if (state.showHelp) html += renderHelp();
 
   app.innerHTML = html;
+}
+
+function renderSparkline(counts) {
+  if (!counts || !counts.length) return '';
+  const max = Math.max(...counts, 1);
+  const bars = counts.map(v => {
+    const h = Math.max(2, Math.round((v / max) * 16));
+    const opacity = v === 0 ? 0.2 : 0.6 + 0.4 * (v / max);
+    return `<rect x="0" y="${16 - h}" width="4" height="${h}" fill="var(--cyan)" opacity="${opacity.toFixed(2)}"/>`;
+  });
+  const w = counts.length * 6 - 2;
+  let svg = `<svg class="cc-sparkline" width="${w}" height="16" viewBox="0 0 ${w} 16" xmlns="http://www.w3.org/2000/svg">`;
+  bars.forEach((bar, i) => {
+    svg += bar.replace('x="0"', `x="${i * 6}"`);
+  });
+  svg += '</svg>';
+  return svg;
 }
 
 function renderCard(item, compact) {
@@ -837,6 +924,46 @@ function renderCard(item, compact) {
       ${cc.in_progress && cc.in_progress.length ? `<span style="color:var(--text-muted)">Working: ${esc(cc.in_progress[0])}</span>` : ''}
       ${cc.blocked && cc.blocked.length ? `<span class="cc-blocked">Blocked: ${esc(cc.blocked[0].task || cc.blocked[0].reason || '')}</span>` : ''}
     </div>`;
+
+    // Milestones checklist
+    if (cc.milestones && cc.milestones.length) {
+      html += `<div class="cc-milestones">`;
+      cc.milestones.forEach(m => {
+        const done = (m.status || '').toLowerCase().includes('complete') || (m.status || '').toLowerCase().includes('done');
+        html += `<div class="cc-milestones-item${done ? ' done' : ''}">
+          <span class="cc-milestones-check${done ? '' : ' open'}">${done ? '✓' : '○'}</span>
+          <span>${esc(m.name || '')}</span>
+          <span style="color:var(--text-dim);margin-left:auto">${esc(m.status || '')}</span>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    // What's Next (from recent_entries[0].what_next)
+    if (cc.recent_entries && cc.recent_entries.length && cc.recent_entries[0].what_next) {
+      html += `<div class="cc-whats-next">
+        <span class="cc-whats-next-label">next›</span>
+        <span>${esc(cc.recent_entries[0].what_next)}</span>
+      </div>`;
+    }
+
+    // Git commit types + sparkline (inline after cc-info)
+    if (item.git_commit_types && Object.keys(item.git_commit_types).length) {
+      const typeColors = {feat: 'var(--green)', fix: 'var(--red)', refactor: 'var(--purple)', docs: 'var(--cyan)', chore: 'var(--text-dim)', test: 'var(--orange)'};
+      const typeBgs = {feat: 'var(--green-bg)', fix: 'rgba(239,68,68,0.12)', refactor: 'rgba(167,139,250,0.12)', docs: 'var(--cyan-bg)', chore: 'rgba(100,116,139,0.12)', test: 'var(--orange-bg)'};
+      html += `<div class="cc-commit-types">`;
+      Object.entries(item.git_commit_types).forEach(([type, pct]) => {
+        const c = typeColors[type] || 'var(--text-muted)';
+        const bg = typeBgs[type] || 'rgba(100,116,139,0.12)';
+        const label = pct > 0 ? `${type} ${Math.round(pct * 100)}%` : type;
+        html += `<span class="cc-commit-tag" style="background:${bg};color:${c}">${esc(label)}</span>`;
+      });
+      html += `</div>`;
+    }
+
+    if (item.git_weekly_counts && item.git_weekly_counts.length) {
+      html += renderSparkline(item.git_weekly_counts);
+    }
   }
 
   if (isExpanded) {
@@ -844,6 +971,26 @@ function renderCard(item, compact) {
     if (item.notes) html += `<p class="card-notes">${esc(item.notes)}</p>`;
     if (item.path) html += `<p class="card-path">${esc(item.path)}</p>`;
     if (item.type) html += `<p class="card-path" style="margin-top:2px">Type: ${esc(item.type)}</p>`;
+
+    // Recent Activity Log (top 3 entries)
+    if (item.cc && item.cc.recent_entries && item.cc.recent_entries.length) {
+      html += `<div class="cc-activity-log">`;
+      const entries = item.cc.recent_entries.slice(0, 3);
+      entries.forEach(e => {
+        const typeClass = (e.type || '').toLowerCase().includes('fix') ? ' fix'
+          : (e.type || '').toLowerCase().includes('refactor') ? ' refactor'
+          : (e.type || '').toLowerCase().includes('plan') ? ' planning'
+          : '';
+        const ts = e.timestamp ? relativeTime(e.timestamp) : '';
+        html += `<div class="cc-activity-entry">
+          <span class="cc-activity-time">${esc(ts)}</span>
+          <span class="cc-activity-summary">${esc(e.summary || e.what_done || '')}</span>
+          ${e.type ? `<span class="cc-activity-type${typeClass}">${esc(e.type)}</span>` : ''}
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
     html += `<div class="card-actions">
       <button class="btn-sm" onclick="openEdit('${item.id}')">Edit</button>
       <button class="btn-sm danger" onclick="deleteItem('${item.id}')">Delete</button>

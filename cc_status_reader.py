@@ -159,12 +159,12 @@ class CCStatusReader:
         return result
 
     def _parse_plan_md(self, filepath: Path) -> dict:
-        """Parse PLAN.md for objective and current phase."""
+        """Parse PLAN.md for objective, current phase, and milestones table."""
         if not filepath.exists():
-            return {"objective": "", "current_phase": ""}
+            return {"objective": "", "current_phase": "", "milestones": []}
 
         text = filepath.read_text(encoding="utf-8")
-        result = {"objective": "", "current_phase": ""}
+        result = {"objective": "", "current_phase": "", "milestones": []}
 
         # Objective
         obj_match = re.search(r"## Objective\s*\n(.*?)(?=\n##|\Z)", text, re.DOTALL)
@@ -179,7 +179,37 @@ class CCStatusReader:
         if phase_match:
             result["current_phase"] = phase_match.group(1).strip()
 
+        # Milestones table
+        result["milestones"] = self._parse_milestones_table(text)
+
         return result
+
+    def _parse_milestones_table(self, text: str) -> list:
+        """Extract milestones from a markdown table under the ## Milestones heading."""
+        milestones = []
+        # Find the Milestones section
+        section_match = re.search(r"## Milestones\s*\n(.*?)(?=\n##|\Z)", text, re.DOTALL)
+        if not section_match:
+            return milestones
+        section = section_match.group(1)
+        # Parse data rows: | number | name | status |
+        for line in section.splitlines():
+            line = line.strip()
+            if not line.startswith("|"):
+                continue
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if len(cells) < 3:
+                continue
+            num_str, name, status = cells[0], cells[1], cells[2]
+            # Skip header and separator rows
+            if not num_str.isdigit():
+                continue
+            milestones.append({
+                "number": int(num_str),
+                "name": name,
+                "status": status,
+            })
+        return milestones
 
     def _parse_decisions_md(self, filepath: Path) -> list[dict]:
         """Parse DECISIONS.md for recent plan changes."""
@@ -304,6 +334,7 @@ class CCStatusReader:
         plan_data = self._parse_plan_md(plan_file)
         item["subtitle"] = plan_data.get("objective", "")[:100]
         item["cc"]["objective"] = plan_data.get("objective", "")
+        item["cc"]["milestones"] = plan_data.get("milestones", [])
 
         # Parse DECISIONS.md
         item["cc"]["recent_decisions"] = self._parse_decisions_md(decisions_file)

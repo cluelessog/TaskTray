@@ -391,6 +391,135 @@ class TestGitIntelMerge:
         assert items["disk_c"]["git_velocity_trend"] == "stalled"
         assert items["disk_c"]["git_commit_count"] == 0
 
+    def test_sync_merges_git_sprints(self, flask_client):
+        """After sync, disk items should have git_sprints field from analyze_projects."""
+        import server as s
+        mock_sprints = [{"week": "2026-W11", "commits": 5}, {"week": "2026-W12", "commits": 10}]
+        mock_results = {
+            "/fake/sprint": {
+                "velocity_trend": "steady",
+                "total_commits": 15,
+                "last_commit_date": "2026-03-18T12:00:00",
+                "stage": "active",
+                "commit_types": {},
+                "sprints": mock_sprints,
+                "weekly_counts": [5, 10],
+                "commits": [{"sha": "abc123", "msg": "feat: add thing"}] * 25,
+                "most_active_day": "Wednesday",
+            }
+        }
+        disk_items = [{"id": "disk_sprints", "title": "SprintsTest", "path": "/fake/sprint", "source": "disk", "status": "backlog", "is_worktree": False}]
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", return_value=mock_results):
+            s.run_sync()
+        r = flask_client.get("/api/items")
+        items = r.get_json()
+        item = next(i for i in items if i["id"] == "disk_sprints")
+        assert item["git_sprints"] == mock_sprints
+
+    def test_sync_merges_git_weekly_counts(self, flask_client):
+        """After sync, disk items should have git_weekly_counts field."""
+        import server as s
+        mock_weekly = [3, 7, 2, 14]
+        mock_results = {
+            "/fake/weekly": {
+                "velocity_trend": "steady",
+                "total_commits": 26,
+                "last_commit_date": "2026-03-18T12:00:00",
+                "stage": "active",
+                "commit_types": {},
+                "sprints": [],
+                "weekly_counts": mock_weekly,
+                "commits": [],
+                "most_active_day": "Monday",
+            }
+        }
+        disk_items = [{"id": "disk_weekly", "title": "WeeklyTest", "path": "/fake/weekly", "source": "disk", "status": "backlog", "is_worktree": False}]
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", return_value=mock_results):
+            s.run_sync()
+        r = flask_client.get("/api/items")
+        items = r.get_json()
+        item = next(i for i in items if i["id"] == "disk_weekly")
+        assert item["git_weekly_counts"] == mock_weekly
+
+    def test_sync_merges_git_commits_limited_to_20(self, flask_client):
+        """After sync, git_commits should be capped at 20 entries."""
+        import server as s
+        all_commits = [{"sha": f"sha{i}", "msg": f"commit {i}"} for i in range(25)]
+        mock_results = {
+            "/fake/commits": {
+                "velocity_trend": "steady",
+                "total_commits": 25,
+                "last_commit_date": "2026-03-18T12:00:00",
+                "stage": "active",
+                "commit_types": {},
+                "sprints": [],
+                "weekly_counts": [],
+                "commits": all_commits,
+                "most_active_day": "Friday",
+            }
+        }
+        disk_items = [{"id": "disk_commits", "title": "CommitsTest", "path": "/fake/commits", "source": "disk", "status": "backlog", "is_worktree": False}]
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", return_value=mock_results):
+            s.run_sync()
+        r = flask_client.get("/api/items")
+        items = r.get_json()
+        item = next(i for i in items if i["id"] == "disk_commits")
+        assert len(item["git_commits"]) == 20
+        assert item["git_commits"] == all_commits[:20]
+
+    def test_sync_merges_git_most_active_day(self, flask_client):
+        """After sync, disk items should have git_most_active_day field."""
+        import server as s
+        mock_results = {
+            "/fake/day": {
+                "velocity_trend": "steady",
+                "total_commits": 5,
+                "last_commit_date": "2026-03-18T12:00:00",
+                "stage": "active",
+                "commit_types": {},
+                "sprints": [],
+                "weekly_counts": [],
+                "commits": [],
+                "most_active_day": "Thursday",
+            }
+        }
+        disk_items = [{"id": "disk_day", "title": "DayTest", "path": "/fake/day", "source": "disk", "status": "backlog", "is_worktree": False}]
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", return_value=mock_results):
+            s.run_sync()
+        r = flask_client.get("/api/items")
+        items = r.get_json()
+        item = next(i for i in items if i["id"] == "disk_day")
+        assert item["git_most_active_day"] == "Thursday"
+
+    def test_sync_git_new_fields_defaults_when_missing(self, flask_client):
+        """When analyze_projects returns data without new fields, defaults are used."""
+        import server as s
+        mock_results = {
+            "/fake/defaults": {
+                "velocity_trend": "steady",
+                "total_commits": 5,
+                "last_commit_date": None,
+                "stage": "stalled",
+                "commit_types": {},
+                # No sprints, weekly_counts, commits, most_active_day
+            }
+        }
+        disk_items = [{"id": "disk_defaults2", "title": "Defaults2", "path": "/fake/defaults", "source": "disk", "status": "backlog", "is_worktree": False}]
+        with patch("server.scan_for_projects", return_value=disk_items), \
+             patch("server.git_intel.analyze_projects", return_value=mock_results):
+            s.run_sync()
+        r = flask_client.get("/api/items")
+        items = r.get_json()
+        item = next(i for i in items if i["id"] == "disk_defaults2")
+        assert item["git_weekly_counts"] == []
+        assert item["git_sprints"] == []
+        assert item["git_commits"] == []
+        assert item["git_most_active_day"] == ""
+
 
 # ── Full Integration Test (Task 6.5) ─────────────────────────────────────────
 
