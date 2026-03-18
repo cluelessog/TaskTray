@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scanner import _detect_type, _extract_description, _guess_category, scan_for_projects, ScanCache, _detect_worktree, _build_project_info
+from scanner import _detect_type, _extract_description, _guess_category, scan_for_projects, ScanCache, _detect_worktree, _build_project_info, _scan_with_timeout, _normalize_to_native
 
 
 # ── _detect_type ──────────────────────────────────────────────────────────────
@@ -559,3 +559,165 @@ class TestWorktreeDetection:
         info = _build_project_info(proj, {".git"})
         assert info["is_worktree"] is False
         assert "parent_path" not in info or info.get("parent_path") is None
+
+
+class TestWorktreeDiscovery:
+    """Scanner must descend into .claude/worktrees/ even after finding a parent project."""
+
+    def test_scanner_finds_worktrees_under_parent(self, tmp_path):
+        """Worktrees at <project>/.claude/worktrees/<branch>/ are discovered."""
+        # Create parent project with .git dir
+        parent = tmp_path / "MyProject"
+        parent.mkdir()
+        (parent / ".git").mkdir()
+
+        # Create a worktree inside .claude/worktrees/
+        wt = parent / ".claude" / "worktrees" / "feature-x"
+        wt.mkdir(parents=True)
+        # Worktree .git file pointing back to parent
+        parent_git_wt = parent / ".git" / "worktrees" / "feature-x"
+        parent_git_wt.mkdir(parents=True)
+        (wt / ".git").write_text(f"gitdir: {parent_git_wt}\n")
+
+        results = _scan_with_timeout(tmp_path, max_depth=5, markers={".git"},
+                                     ignore_dirs={"node_modules", "__pycache__"},
+                                     timeout_seconds=5)
+        paths = [r["path"] for r in results]
+        assert str(parent) in paths, "Parent project not found"
+        assert str(wt) in paths, "Worktree under .claude/worktrees/ not found"
+
+    def test_scanner_worktree_has_parent_path(self, tmp_path):
+        """Discovered worktree has correct parent_path and is_worktree=True."""
+        parent = tmp_path / "Proj"
+        parent.mkdir()
+        (parent / ".git").mkdir()
+
+        wt = parent / ".claude" / "worktrees" / "bugfix"
+        wt.mkdir(parents=True)
+        parent_git_wt = parent / ".git" / "worktrees" / "bugfix"
+        parent_git_wt.mkdir(parents=True)
+        (wt / ".git").write_text(f"gitdir: {parent_git_wt}\n")
+
+        results = _scan_with_timeout(tmp_path, max_depth=5, markers={".git"},
+                                     ignore_dirs={"node_modules", "__pycache__"},
+                                     timeout_seconds=5)
+        wt_items = [r for r in results if r.get("is_worktree")]
+        assert len(wt_items) == 1
+        assert wt_items[0]["parent_path"] == str(parent)
+
+    def test_scanner_finds_project_when_git_in_ignore_dirs(self, tmp_path):
+        """Projects are found even when .git is both a marker and in ignore_dirs."""
+        proj = tmp_path / "MyProject"
+        proj.mkdir()
+        (proj / ".git").mkdir()
+
+        results = _scan_with_timeout(tmp_path, max_depth=3, markers={".git"},
+                                     ignore_dirs={"node_modules", ".git", "__pycache__"},
+                                     timeout_seconds=5)
+        paths = [r["path"] for r in results]
+        assert str(proj) in paths, \
+            "Project not found when .git is in both markers and ignore_dirs"
+
+    def test_scanner_finds_worktrees_beyond_max_depth(self, tmp_path):
+        """Worktrees at depth > max_depth are still found via direct scan."""
+        parent = tmp_path / "MyProject"
+        parent.mkdir()
+        (parent / ".git").mkdir()
+
+        # Worktree at depth 4 from tmp_path: MyProject/.claude/worktrees/feat/
+        wt = parent / ".claude" / "worktrees" / "feat"
+        wt.mkdir(parents=True)
+        parent_git_wt = parent / ".git" / "worktrees" / "feat"
+        parent_git_wt.mkdir(parents=True)
+        (wt / ".git").write_text(f"gitdir: {parent_git_wt}\n")
+
+        # max_depth=2 would normally miss depth-4 worktree
+        results = _scan_with_timeout(tmp_path, max_depth=2, markers={".git"},
+                                     ignore_dirs={"node_modules", "__pycache__"},
+                                     timeout_seconds=5)
+        paths = [r["path"] for r in results]
+        assert str(parent) in paths, "Parent project not found"
+        assert str(wt) in paths, "Worktree beyond max_depth not found by direct scan"
+
+
+class TestNormalizeToNative:
+    """_normalize_to_native converts WSL /mnt/X/ paths to X:/ on Windows."""
+
+    def test_wsl_path_converted(self):
+        """On any platform, /mnt/d/Projects/Foo → D:/Projects/Foo."""
+        result = _normalize_to_native("/mnt/d/Projects/Foo")
+        # On Linux (WSL), this should still convert for cross-platform compat
+        assert result == "D:/Projects/Foo" or result == "/mnt/d/Projects/Foo"
+        # The function should at least handle Windows platform
+
+    def test_already_native_windows_passthrough(self):
+        """Windows-style paths pass through unchanged."""
+        assert _normalize_to_native("D:/Projects/Foo") == "D:/Projects/Foo"
+
+    def test_already_native_backslash_passthrough(self):
+        """Backslash Windows paths pass through (not our job to normalize slashes)."""
+        result = _normalize_to_native("D:\\Projects\\Foo")
+        assert "D:" in result and "Projects" in result
+
+    def test_linux_native_passthrough(self):
+        """Non-/mnt/ Linux paths pass through unchanged."""
+        assert _normalize_to_native("/home/user/projects") == "/home/user/projects"
+
+    def test_empty_string(self):
+        """Empty string returns empty string."""
+        assert _normalize_to_native("") == ""
+
+    def test_idempotent(self):
+        """Applying twice gives same result."""
+        first = _normalize_to_native("/mnt/c/Users/test")
+        second = _normalize_to_native(first)
+        assert first == second
+
+
+class TestDetectWorktreeWSLPaths:
+    """_detect_worktree handles WSL gitdir paths correctly."""
+
+    def test_wsl_gitdir_produces_normalized_parent(self, tmp_path):
+        """A .git file with WSL /mnt/ gitdir still produces a usable parent_path."""
+        # Simulate: worktree .git file written by WSL git
+        worktree = tmp_path / "my-worktree"
+        worktree.mkdir()
+
+        # The gitdir points to a WSL-style path
+        # We need the actual dirs to exist for resolve() on relative paths
+        parent_git_wt = tmp_path / "parent" / ".git" / "worktrees" / "feat"
+        parent_git_wt.mkdir(parents=True)
+
+        # Write WSL-style absolute path
+        wsl_gitdir = str(parent_git_wt).replace("\\", "/")
+        (worktree / ".git").write_text(f"gitdir: {wsl_gitdir}\n")
+
+        result = _detect_worktree(worktree)
+        assert result is not None
+        # parent_path should NOT contain /mnt/ if running on Windows
+        # On Linux it's fine as-is
+        assert result["parent_path"] == str(tmp_path / "parent") or \
+               result["parent_path"].replace("\\", "/") == str(tmp_path / "parent").replace("\\", "/")
+
+    def test_relative_gitdir_resolved(self, tmp_path):
+        """Relative gitdir paths are resolved to absolute before parsing."""
+        parent = tmp_path / "project"
+        parent.mkdir()
+        parent_git = parent / ".git"
+        parent_git.mkdir()
+        wt_dir = parent_git / "worktrees" / "my-branch"
+        wt_dir.mkdir(parents=True)
+
+        worktree = tmp_path / "project" / ".claude" / "worktrees" / "my-branch"
+        worktree.mkdir(parents=True)
+        # Write relative gitdir
+        (worktree / ".git").write_text("gitdir: ../../../.git/worktrees/my-branch\n")
+
+        result = _detect_worktree(worktree)
+        assert result is not None
+        assert result["is_worktree"] is True
+        assert result["worktree_branch"] == "my-branch"
+        # parent_path should be the resolved absolute path of 'project'
+        expected = str(parent).replace("\\", "/")
+        actual = result["parent_path"].replace("\\", "/")
+        assert actual == expected

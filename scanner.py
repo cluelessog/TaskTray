@@ -4,6 +4,8 @@ Disk Scanner — discovers projects by looking for marker files/folders.
 from __future__ import annotations
 
 import os
+import re
+import sys
 import json
 import hashlib
 import logging
@@ -13,6 +15,18 @@ from pathlib import Path
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_to_native(raw: str) -> str:
+    """Convert WSL /mnt/X/... paths to X:/... for cross-platform compatibility."""
+    if not raw:
+        return raw
+    m = re.match(r"^/mnt/([a-zA-Z])(/.*)?$", raw)
+    if m:
+        drive = m.group(1).upper()
+        rest = m.group(2) or ""
+        return f"{drive}:{rest}"
+    return raw
 
 
 def _detect_worktree(path: Path) -> "dict | None":
@@ -39,8 +53,12 @@ def _detect_worktree(path: Path) -> "dict | None":
     # Normalise Windows backslashes
     gitdir = gitdir.replace("\\", "/")
 
+    # Resolve relative gitdir paths to absolute (relative to worktree dir)
+    if not gitdir.startswith("/") and not re.match(r"^[a-zA-Z]:", gitdir):
+        gitdir = str((path / gitdir).resolve()).replace("\\", "/")
+
     # Expected: <parent>/.git/worktrees/<branch-name>
-    parts = gitdir.replace("\\", "/").split("/")
+    parts = gitdir.split("/")
     try:
         wt_idx = parts.index("worktrees")
     except ValueError:
@@ -55,6 +73,9 @@ def _detect_worktree(path: Path) -> "dict | None":
     parent_path = "/".join(parts[: wt_idx - 1])
     if not parent_path:
         return None
+
+    # Normalize WSL /mnt/X/ paths to native X:/ format
+    parent_path = _normalize_to_native(parent_path)
 
     return {
         "is_worktree": True,
@@ -71,6 +92,7 @@ def _resolve_git_index(path: Path) -> Path:
             content = git_path.read_text(encoding="utf-8", errors="replace").strip()
             if content.startswith("gitdir:"):
                 gitdir = content[len("gitdir:"):].strip().replace("\\", "/")
+                gitdir = _normalize_to_native(gitdir)
                 return Path(gitdir) / "index"
         except OSError:
             pass
@@ -235,15 +257,28 @@ def _scan_with_timeout(
                 dirs.clear()
                 continue
 
-            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+            # Check markers BEFORE filtering ignore_dirs (e.g. .git is both a marker and ignored)
+            all_entries = set(dirs + files)
+            found_markers = all_entries & markers
 
-            entries = set(dirs + files)
-            found_markers = entries & markers
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
             if found_markers and str(root_path) not in seen_paths:
                 seen_paths.add(str(root_path))
                 project = _build_project_info(root_path, found_markers, activity_threshold_minutes)
                 results.append(project)
+                # Directly scan .claude/worktrees/ for worktree subdirs
+                # (bypasses depth limit which would prevent discovery)
+                wt_base = root_path / ".claude" / "worktrees"
+                if wt_base.is_dir():
+                    for wt_dir in wt_base.iterdir():
+                        if wt_dir.is_dir() and str(wt_dir) not in seen_paths:
+                            wt_entries = set(os.listdir(wt_dir))
+                            wt_markers = wt_entries & markers
+                            if wt_markers:
+                                seen_paths.add(str(wt_dir))
+                                wt_project = _build_project_info(wt_dir, wt_markers, activity_threshold_minutes)
+                                results.append(wt_project)
                 dirs.clear()
 
     thread = threading.Thread(target=_do_scan, daemon=True)

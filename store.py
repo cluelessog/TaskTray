@@ -29,6 +29,7 @@ class DataStore:
         self._lock = threading.RLock()
         self._disk_items: list[dict] = []
         self._obsidian_items: list[dict] = []
+        self._cc_items: list[dict] = []
         self._manual_items: list[dict] = []
         self._overrides: dict[str, dict] = {}  # id -> partial overrides
         self._read_only = False
@@ -150,16 +151,30 @@ class DataStore:
         with self._lock:
             self._obsidian_items = items
 
+    def update_cc_items(self, items: list[dict]):
+        with self._lock:
+            self._cc_items = items
+
     def get_all_items(self) -> list[dict]:
         """Return merged list with overrides applied."""
         with self._lock:
             all_items = []
             seen_ids = set()
+            seen_paths = set()
+
+            # Build CC lookup by path for merging with disk items
+            cc_by_path: dict[str, dict] = {}
+            for cc_item in self._cc_items:
+                path = cc_item.get("path", "")
+                if path:
+                    cc_by_path[path] = cc_item
 
             # Manual items first (highest priority)
             for item in self._manual_items:
                 all_items.append(item)
                 seen_ids.add(item["id"])
+                if item.get("path"):
+                    seen_paths.add(item["path"])
 
             # Obsidian items
             for item in self._obsidian_items:
@@ -167,13 +182,29 @@ class DataStore:
                     merged = {**item, **self._overrides.get(item["id"], {})}
                     all_items.append(merged)
                     seen_ids.add(item["id"])
+                    if item.get("path"):
+                        seen_paths.add(item["path"])
 
-            # Disk items
+            # Disk items — merge CC data if path matches
             for item in self._disk_items:
                 if item["id"] not in seen_ids:
                     merged = {**item, **self._overrides.get(item["id"], {})}
+                    cc_match = cc_by_path.get(item.get("path", ""))
+                    if cc_match:
+                        merged["cc"] = cc_match.get("cc", {})
+                        seen_paths.add(item["path"])
                     all_items.append(merged)
                     seen_ids.add(item["id"])
+                    if item.get("path"):
+                        seen_paths.add(item["path"])
+
+            # CC items that didn't merge with disk (standalone)
+            for cc_item in self._cc_items:
+                path = cc_item.get("path", "")
+                if cc_item["id"] not in seen_ids and path not in seen_paths:
+                    merged = {**cc_item, **self._overrides.get(cc_item["id"], {})}
+                    all_items.append(merged)
+                    seen_ids.add(cc_item["id"])
 
             return copy.deepcopy(all_items)
 
@@ -252,6 +283,7 @@ class DataStore:
                 "disk": sum(1 for i in items if i.get("source") == "disk"),
                 "obsidian": sum(1 for i in items if i.get("source") == "obsidian"),
                 "manual": sum(1 for i in items if i.get("source") == "manual"),
+                "claude_code": sum(1 for i in items if i.get("source") == "claude_code" or i.get("cc")),
             },
             "focused": sum(1 for i in items if i.get("focused")),
         }
