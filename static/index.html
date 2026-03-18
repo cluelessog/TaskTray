@@ -776,15 +776,29 @@ function render() {
   }
 
   if (view === 'board') {
+    // Pre-collect all worktrees keyed by normalized parent_path
+    const norm = p => (p || '').replace(/\\/g, '/').replace(/^\/mnt\/([a-zA-Z])(\/.*)?$/, (_, d, rest) => d.toUpperCase() + ':' + (rest || ''));
+    const allWorktrees = filtered.filter(i => i.is_worktree);
+    const wtByParent = {};
+    allWorktrees.forEach(wt => { const k = norm(wt.parent_path); if (!wtByParent[k]) wtByParent[k] = []; wtByParent[k].push(wt); });
+    const nonWorktrees = filtered.filter(i => !i.is_worktree);
+
     html += `<div class="board-grid">`;
     STATUS_OPTS.filter(s=>s.id!=='done').forEach(status => {
-      const colItems = filtered.filter(i=>i.status===status.id)
+      const colParents = nonWorktrees.filter(i=>i.status===status.id)
         .sort((a,b) => ['p0','p1','p2','p3'].indexOf(a.priority) - ['p0','p1','p2','p3'].indexOf(b.priority));
+      // Attach worktrees to parents in this column regardless of worktree status
+      const colItems = [];
+      colParents.forEach(item => {
+        colItems.push(item);
+        const wts = wtByParent[norm(item.path)];
+        if (wts) wts.forEach(wt => colItems.push(wt));
+      });
       html += `<div class="board-col" ondragover="onDragOver(event)" ondrop="onDrop(event,'${status.id}')" ondragleave="onDragLeave(event)">
         <div class="col-header">
           <span class="col-dot" style="background:${status.color}"></span>
           <span class="col-title">${status.label}</span>
-          <span class="col-count">${colItems.length}</span>
+          <span class="col-count">${colParents.length}</span>
         </div>`;
       if (colItems.length === 0) html += `<p class="col-empty">No items</p>`;
       const colGroups = buildGroupedItems(colItems);
