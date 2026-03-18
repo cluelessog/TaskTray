@@ -257,10 +257,11 @@ def _scan_with_timeout(
                 dirs.clear()
                 continue
 
-            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+            # Check markers BEFORE filtering ignore_dirs (e.g. .git is both a marker and ignored)
+            all_entries = set(dirs + files)
+            found_markers = all_entries & markers
 
-            entries = set(dirs + files)
-            found_markers = entries & markers
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
             if found_markers and str(root_path) not in seen_paths:
                 seen_paths.add(str(root_path))

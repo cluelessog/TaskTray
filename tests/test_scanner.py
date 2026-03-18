@@ -605,6 +605,19 @@ class TestWorktreeDiscovery:
         assert len(wt_items) == 1
         assert wt_items[0]["parent_path"] == str(parent)
 
+    def test_scanner_finds_project_when_git_in_ignore_dirs(self, tmp_path):
+        """Projects are found even when .git is both a marker and in ignore_dirs."""
+        proj = tmp_path / "MyProject"
+        proj.mkdir()
+        (proj / ".git").mkdir()
+
+        results = _scan_with_timeout(tmp_path, max_depth=3, markers={".git"},
+                                     ignore_dirs={"node_modules", ".git", "__pycache__"},
+                                     timeout_seconds=5)
+        paths = [r["path"] for r in results]
+        assert str(proj) in paths, \
+            "Project not found when .git is in both markers and ignore_dirs"
+
     def test_scanner_finds_worktrees_beyond_max_depth(self, tmp_path):
         """Worktrees at depth > max_depth are still found via direct scan."""
         parent = tmp_path / "MyProject"
