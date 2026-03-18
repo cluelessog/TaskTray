@@ -45,6 +45,10 @@ maintenance / feature additions
 | 8 | Worktree Grouping (nest worktrees under parent cards) | completed |
 | 9 | Claude Code status integration (cc_status_reader, endpoints, UI) | completed |
 | 10 | Scanner cross-platform fixes (WSL paths, depth, marker/ignore) | completed |
+| 11 | UI Polish (phase colors, health dots, header, nesting) | completed |
+| 12 | Milestones display (checklist, activity, sparklines, what's next) | completed |
+| 13 | Phase 7a: Quick Wins (WIP gauge, streak, tray badge, context resume) | not-started |
+| 14 | Phase 7b: AI Features (standup, drift alert, health score, focus mode) | not-started |
 
 ## Task Breakdown
 
@@ -115,8 +119,50 @@ maintenance / feature additions
 - [x] Frontend buildGroupedItems path normalization
 - [x] Header layout fix (.header-right flex)
 
+### Milestones Display (complete)
+- [x] Parse PLAN.md milestones table into cc.milestones
+- [x] Pass git_weekly_counts, git_sprints, git_commits, git_most_active_day through server
+- [x] Frontend: milestones checklist (✓/○), what's next on card surface
+- [x] Frontend: recent activity log, git commit type tags, weekly sparkline
+- [x] Worktree board column fix: attach to parent's column regardless of status
+
+### UI Polish (complete)
+- [x] Substring-based phase color mapping (getPhaseColor)
+- [x] Consistent health dot sizing and alignment
+- [x] Header dividers between source badges, CC strip, action buttons
+- [x] CC info section with contained background/border
+- [x] Softened worktree nesting border and flex gap
+
+## Phase 7: Ambient Intelligence (planned)
+
+> Research-backed features for daily retention. Prioritized by value/effort ratio.
+
+### 7a: Quick Wins (low effort, high value)
+- [ ] WIP count gauge — concurrent tasks/branches per project
+- [ ] Coding streak counter — tray badge with streak count
+- [ ] Tray icon health badge — color-coded by portfolio health (green/yellow/red)
+- [ ] Blocker staleness alert — warn when STATUS.md "blocked" entries age >48h
+- [ ] Context resume card — "Where was I?" last 3 commits + last STATUS.md entry
+
+### 7b: AI-Powered Features (medium effort, unique moat)
+- [ ] AI daily standup summary — "Generate Standup" button feeds docs to Claude API
+- [ ] Plan vs reality drift alert — compare PLAN.md milestones against STATUS.md execution
+- [ ] Portfolio health score — 4-signal composite (days since commit, milestone progress, WIP, blockers)
+- [ ] 90-min focus mode — lock to one project, dim others, auto-log session
+
+### 7c: Engagement & Notifications (medium effort)
+- [ ] Morning briefing digest — single daily startup notification summarizing all projects
+- [ ] Weekly health report — auto-generated cross-project summary
+- [ ] Context switch alert — warn when >5 project switches/day
+- [ ] Streak + milestone dual system — long-term retention anchor
+
+### 7d: Strategic (higher effort, future)
+- [ ] Agent activity feed — watch .omc/state/ for live Claude Code activity
+- [ ] Natural language project query — "What's blocking X?" against local docs
+- [ ] Coding hours heatmap — calendar view (needs IDE extension)
+
 ## Dependencies
 
 - Python 3.8+, Flask, pystray, pywebview, PyYAML, GitPython
 - Obsidian vault path configured in config.yaml
-- 340 tests passing (pytest)
+- 381 tests passing (pytest)

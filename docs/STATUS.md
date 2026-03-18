@@ -9,14 +9,36 @@
 - **Phase**: maintenance / feature additions
 - **Health**: 🟢 on-track
 - **Last activity**: 2026-03-18
-- **Test count**: 340 passing
+- **Test count**: 381 passing
 
 ## In Progress
 
 None
 
+## Activity Log
+
+### [2026-03-18 09:00] — Milestones display, worktree column fix, and Phase 7 roadmap
+- **Type**: feature
+- **Status**: completed
+- **Files changed**: cc_status_reader.py, server.py, static/index.html, tests/test_cc_integration.py, tests/test_design_alignment.py, tests/test_server.py, docs/PLAN.md
+- **What was done**: Added milestones checklist, what's next, activity log, git commit type tags, weekly sparkline. Fixed worktree board column grouping. Researched and planned Phase 7 (Ambient Intelligence) with 16 features across 4 tiers.
+- **What's next**: Phase 7a quick wins — WIP gauge, coding streak, tray health badge, blocker staleness, context resume
+- **Blockers**: none
+
+### [2026-03-18 —] — UI Polish: phase colors, health dots, header layout, CC info, worktree nesting
+- **Type**: feature
+- **Status**: completed
+- **Files changed**: `static/index.html`, `tests/test_design_alignment.py`
+- **What was done**: Polished 6 areas of the dashboard — substring-based CC phase color mapping, consistent health dot sizing/alignment, header dividers for visual grouping, cc-info card section with background/border, softened worktree nesting indent, and 12 new design-alignment tests (352 total).
+- **What's next**: Merge `ui-polish` branch to master with user approval.
+- **Blockers**: none
+
 ## Completed (Recent)
 
+- Milestones display: checklist, activity log, sparklines, what's next, worktree column fix
+- UI Polish: phase colors, health dots, header layout, CC info, worktree nesting
+- CC Integration: status reader, store merge, server endpoints, frontend display
+- Scanner fixes: WSL paths, depth limit bypass, marker/ignore ordering
 - Worktree grouping: nest worktrees under parent project cards in UI
 - Phase 6: Git intelligence integration (worktree detect, frontend display, git-recency promote)
 - Phase 5: Git intelligence core (git_intel module, velocity, stage inference)
