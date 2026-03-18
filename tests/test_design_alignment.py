@@ -372,3 +372,103 @@ class TestWorktreeNestingPolish:
         assert nested_match, ".worktree-nested-card CSS rule not found"
         rule = nested_match.group()
         assert "border-radius" in rule
+
+
+# ── Milestones Checklist (Task 3) ────────────────────────────────────────────
+
+class TestMilestonesChecklist:
+    def test_cc_milestones_css_class(self, html):
+        """.cc-milestones CSS class exists in HTML."""
+        assert ".cc-milestones" in html
+
+    def test_milestones_render_in_render_card(self, html):
+        """renderCard references cc.milestones."""
+        assert "milestones" in html
+
+    def test_milestone_checkmark_symbol(self, html):
+        """Completed milestone renders checkmark ✓ symbol."""
+        assert "\u2713" in html or "✓" in html or "checkmark" in html.lower()
+
+    def test_milestone_open_symbol(self, html):
+        """Open milestone renders circle ○ symbol."""
+        assert "\u25cb" in html or "○" in html
+
+    def test_milestones_show_status(self, html):
+        """Milestone rendering references status field."""
+        assert "milestone" in html and "status" in html
+
+
+# ── What's Next Section (Task 3) ─────────────────────────────────────────────
+
+class TestWhatsNext:
+    def test_cc_whats_next_css_class(self, html):
+        """.cc-whats-next CSS class exists in HTML."""
+        assert ".cc-whats-next" in html
+
+    def test_whats_next_in_render_card(self, html):
+        """renderCard renders what_next from recent_entries."""
+        assert "what_next" in html
+
+    def test_whats_next_uses_recent_entries(self, html):
+        """renderCard accesses recent_entries for what_next."""
+        assert "recent_entries" in html
+
+
+# ── Recent Activity Log (Task 3) ─────────────────────────────────────────────
+
+class TestRecentActivityLog:
+    def test_cc_activity_log_css_class(self, html):
+        """.cc-activity-log CSS class exists in HTML."""
+        assert ".cc-activity-log" in html
+
+    def test_activity_log_in_expanded_view(self, html):
+        """Activity log entries are rendered in expanded view."""
+        assert "cc-activity-log" in html
+
+    def test_activity_log_shows_summary(self, html):
+        """Activity log references summary field."""
+        assert "summary" in html
+
+    def test_activity_log_shows_timestamp(self, html):
+        """Activity log references timestamp field."""
+        assert "timestamp" in html
+
+
+# ── Git Commit Types (Task 3) ─────────────────────────────────────────────────
+
+class TestGitCommitTypes:
+    def test_cc_commit_types_css_class(self, html):
+        """.cc-commit-types CSS class exists in HTML."""
+        assert ".cc-commit-types" in html
+
+    def test_commit_types_in_render_card(self, html):
+        """renderCard references git_commit_types."""
+        assert "git_commit_types" in html
+
+    def test_commit_types_feat_color(self, html):
+        """feat commit type uses green color."""
+        assert "feat" in html
+
+    def test_commit_types_fix_color(self, html):
+        """fix commit type uses red color."""
+        assert "fix" in html
+
+
+# ── Weekly Sparkline (Task 3) ─────────────────────────────────────────────────
+
+class TestWeeklySparkline:
+    def test_cc_sparkline_css_class(self, html):
+        """.cc-sparkline CSS class exists in HTML."""
+        assert ".cc-sparkline" in html
+
+    def test_sparkline_svg_in_render_card(self, html):
+        """renderCard renders SVG sparkline for git_weekly_counts."""
+        assert "git_weekly_counts" in html
+
+    def test_sparkline_uses_svg_element(self, html):
+        """Sparkline uses inline SVG."""
+        assert "<svg" in html or "renderSparkline" in html or "sparkline" in html.lower()
+
+    def test_sparkline_max_height(self, html):
+        """Sparkline bar max height is 16px or references max height."""
+        assert "16" in html

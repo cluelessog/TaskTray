@@ -285,6 +285,10 @@ def _apply_git_intelligence(disk_items: list, cfg: dict) -> list:
         item["git_last_commit"] = data.get("last_commit_date", None)
         item["git_stage"] = data.get("stage", "stalled")
         item["git_commit_types"] = data.get("commit_types", {})
+        item["git_weekly_counts"] = data.get("weekly_counts", [])
+        item["git_sprints"] = data.get("sprints", [])
+        item["git_commits"] = data.get("commits", [])[:20]
+        item["git_most_active_day"] = data.get("most_active_day", "")
 
     return disk_items
 
