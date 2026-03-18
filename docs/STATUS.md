@@ -8,8 +8,8 @@
 - **Project**: TaskTray
 - **Phase**: maintenance / feature additions
 - **Health**: 🟢 on-track
-- **Last activity**: 2026-03-15
-- **Test count**: 307 passing
+- **Last activity**: 2026-03-18
+- **Test count**: 340 passing
 
 ## In Progress
 
@@ -37,6 +37,14 @@ None
 ---
 
 ## Activity Log
+
+### [2026-03-18 08:30] — Claude Code integration + scanner cross-platform fixes
+- **Type**: feature
+- **Status**: completed
+- **Files changed**: cc_status_reader.py, server.py, store.py, scanner.py, static/index.html, tests/test_cc_integration.py, tests/test_scanner.py, tests/test_design_alignment.py
+- **What was done**: Added CC status reader (parses STATUS.md/PLAN.md/DECISIONS.md), store merge by path, 3 API endpoints, frontend CC summary strip with health dots and phase badges. Fixed scanner: WSL path normalization, relative gitdir resolution, direct .claude/worktrees/ scan bypassing depth limit, marker-before-filter bug, header layout. 33 new tests (340 total).
+- **What's next**: All planned milestones complete. Project in maintenance mode.
+- **Blockers**: none
 
 ### [2026-03-15 18:00] — Worktree grouping implementation
 - **Type**: feature

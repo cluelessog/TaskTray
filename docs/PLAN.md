@@ -1,6 +1,6 @@
 # Plan: TaskTray
 
-> Last updated: 2026-03-15
+> Last updated: 2026-03-18
 > Version: 2.0
 
 ## Objective
@@ -43,7 +43,8 @@ maintenance / feature additions
 | 6 | Phase 5: Git Intelligence Core (git_intel module, velocity, stage) | completed |
 | 7 | Phase 6: Git Intelligence Integration (worktree detect, frontend, config) | completed |
 | 8 | Worktree Grouping (nest worktrees under parent cards) | completed |
-| 9 | Claude Code status integration (cc_status_reader.py) | not-started |
+| 9 | Claude Code status integration (cc_status_reader, endpoints, UI) | completed |
+| 10 | Scanner cross-platform fixes (WSL paths, depth, marker/ignore) | completed |
 
 ## Task Breakdown
 
@@ -98,18 +99,24 @@ maintenance / feature additions
 - [x] All 3 views (board, list, focus) use grouping
 - [x] Orphan worktrees render standalone with WT badge
 
-### Next: Claude Code Integration (not started)
-- [ ] Add cc_status_reader.py
-- [ ] Wire into server.py sync loop
-- [ ] Add /api/cc-status and /api/cc-summary endpoints
-- [ ] Frontend: CC status panel with health dots, phase badges, activity log
+### Claude Code Integration (complete)
+- [x] cc_status_reader.py: parses STATUS.md/PLAN.md/DECISIONS.md
+- [x] Store merge: CC items merge with disk items by path
+- [x] Server endpoints: /api/cc-status, /api/cc-summary, /api/cc-status/<name>
+- [x] Frontend: CC summary strip, health dots, phase badges, working-on/blocked
+- [x] WSL path normalization (_normalize_to_native)
+- [x] read_project_by_name API
 
-## Open Questions
-
-- How to handle projects found by both disk scanner AND CC reader (merge strategy)
+### Scanner Cross-Platform Fixes (complete)
+- [x] WSL-to-Windows path normalization in _detect_worktree
+- [x] Relative gitdir path resolution
+- [x] Direct .claude/worktrees/ scan (bypasses depth limit)
+- [x] Check markers before filtering ignore_dirs
+- [x] Frontend buildGroupedItems path normalization
+- [x] Header layout fix (.header-right flex)
 
 ## Dependencies
 
 - Python 3.8+, Flask, pystray, pywebview, PyYAML, GitPython
 - Obsidian vault path configured in config.yaml
-- 307 tests passing (pytest)
+- 340 tests passing (pytest)
