@@ -93,8 +93,13 @@ body {
 .stats-bar .num.backlog { color: var(--text-muted); }
 .stats-bar .num.done { color: var(--green); }
 .stats-bar .num.focused { color: var(--yellow); }
-.header-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.header-actions { display: flex; gap: 8px; align-items: center; }
+.header-right {
+  display: flex; gap: 12px; align-items: center; flex-wrap: nowrap;
+}
+.header-divider {
+  width: 1px; height: 24px; background: var(--border); flex-shrink: 0;
+}
+.header-actions { display: flex; gap: 6px; align-items: center; }
 .btn-icon {
   background: transparent; border: 1px solid var(--border); color: var(--text-dim);
   border-radius: 6px; width: 34px; height: 34px; font-size: 15px; cursor: pointer;
@@ -255,11 +260,12 @@ body {
   letter-spacing: 0.3px;
 }
 .worktree-group {
-  margin-left: 16px; padding-left: 12px; border-left: 2px solid var(--purple);
-  margin-top: 4px;
+  margin-left: 14px; padding-left: 14px; border-left: 2px solid rgba(167,139,250,0.4);
+  margin-top: 6px; padding-top: 4px; gap: 4px; display: flex; flex-direction: column;
 }
 .worktree-nested-card {
-  background: rgba(167,139,250,0.04); border-radius: 6px; margin-bottom: 4px;
+  background: rgba(167,139,250,0.03); border-radius: 6px; margin-bottom: 3px;
+  border: 1px solid rgba(167,139,250,0.08);
 }
 .worktree-nested-card .card { border-left-color: var(--purple); }
 .worktree-count-badge {
@@ -274,23 +280,29 @@ body {
 
 /* ── Claude Code Status ──────────────────── */
 .cc-summary-strip {
-  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-  font-family: var(--font-mono); font-size: 10px; margin-top: 4px;
+  display: flex; gap: 8px; align-items: center; flex-wrap: nowrap;
+  font-family: var(--font-mono); font-size: 10px;
+}
+.cc-summary-strip > span {
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
 }
 .cc-health-dot {
-  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
-  flex-shrink: 0;
+  width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+  flex-shrink: 0; vertical-align: middle;
 }
 .cc-phase-badge {
-  font-size: 9px; padding: 1px 6px; border-radius: 10px; font-family: var(--font-mono);
-  letter-spacing: 0.3px; white-space: nowrap;
+  font-size: 9px; padding: 2px 7px; border-radius: 10px; font-family: var(--font-mono);
+  letter-spacing: 0.3px; white-space: nowrap; font-weight: 500;
 }
 .cc-blocked {
   color: var(--red); font-size: 10px; font-family: var(--font-mono);
+  display: flex; align-items: center; gap: 5px;
 }
 .cc-info {
   display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
-  font-size: 10px; font-family: var(--font-mono); margin-top: 4px;
+  font-size: 10px; font-family: var(--font-mono); margin-top: 6px;
+  background: rgba(0,0,0,0.25); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px;
 }
 
 .card-expanded {
@@ -647,15 +659,18 @@ function render() {
         <span class="source-badge obsidian">${stats.by_source?.obsidian||0} obsidian</span>
         <span class="source-badge manual">${stats.by_source?.manual||0} manual</span>
       </div>
-      ${state.ccSummary ? `<div class="cc-summary-strip">
-        ${state.ccSummary.on_track ? `<span><span class="cc-health-dot" style="background:var(--green)"></span> ${state.ccSummary.on_track} on track</span>` : ''}
-        ${state.ccSummary.at_risk ? `<span><span class="cc-health-dot" style="background:var(--yellow)"></span> ${state.ccSummary.at_risk} at risk</span>` : ''}
-        ${state.ccSummary.blocked ? `<span class="cc-blocked"><span class="cc-health-dot" style="background:var(--red)"></span> ${state.ccSummary.blocked} blocked</span>` : ''}
-        <span style="color:var(--text-faint)">${state.ccSummary.total||0} CC projects</span>
+      ${state.ccSummary ? `<div class="header-divider"></div><div class="cc-summary-strip">
+        ${state.ccSummary.on_track ? `<span><span class="cc-health-dot" style="background:var(--green)"></span>${state.ccSummary.on_track} on track</span>` : ''}
+        ${state.ccSummary.at_risk ? `<span><span class="cc-health-dot" style="background:var(--yellow)"></span>${state.ccSummary.at_risk} at risk</span>` : ''}
+        ${state.ccSummary.blocked ? `<span class="cc-blocked"><span class="cc-health-dot" style="background:var(--red)"></span>${state.ccSummary.blocked} blocked</span>` : ''}
+        <span style="color:var(--text-faint)">${state.ccSummary.total||0} CC</span>
       </div>` : ''}
-      <button class="btn-icon" style="width:auto;padding:0 10px;font-size:12px" onclick="window.location.href='/api/export?format=json'" title="Export items as JSON">Export</button>
-      <button class="btn-icon ${state.syncing?'syncing':''}" onclick="triggerSync()" title="Sync now">⟳</button>
-      <button class="btn-icon" onclick="toggleHelp()" title="Keyboard shortcuts (?)">?</button>
+      <div class="header-divider"></div>
+      <div class="header-actions">
+        <button class="btn-icon" style="width:auto;padding:0 10px;font-size:12px" onclick="window.location.href='/api/export?format=json'" title="Export items as JSON">Export</button>
+        <button class="btn-icon ${state.syncing?'syncing':''}" onclick="triggerSync()" title="Sync now">⟳</button>
+        <button class="btn-icon" onclick="toggleHelp()" title="Keyboard shortcuts (?)">?</button>
+      </div>
     </div>
   </header>`;
 
@@ -804,8 +819,18 @@ function renderCard(item, compact) {
     const cc = item.cc;
     const healthColors = {'🟢': 'var(--green)', '🟡': 'var(--yellow)', '🔴': 'var(--red)'};
     const hColor = healthColors[cc.health_icon] || 'var(--text-dim)';
-    const phaseColors = {implementation: 'var(--cyan)', planning: 'var(--yellow)', testing: 'var(--green)', shipping: 'var(--green)', spec: 'var(--purple)'};
-    const pColor = phaseColors[cc.phase] || 'var(--text-muted)';
+    const getPhaseColor = p => {
+      const s = (p || '').toLowerCase();
+      if (s.includes('implement') || s.includes('coding') || s.includes('build')) return 'var(--cyan)';
+      if (s.includes('plan') || s.includes('spec') || s.includes('design')) return 'var(--yellow)';
+      if (s.includes('test') || s.includes('review') || s.includes('qa')) return 'var(--orange)';
+      if (s.includes('ship') || s.includes('deploy') || s.includes('release')) return 'var(--green)';
+      if (s.includes('complete') || s.includes('done') || s.includes('finish')) return 'var(--green)';
+      if (s.includes('mainten') || s.includes('feature') || s.includes('addition')) return 'var(--yellow)';
+      if (s.includes('block') || s.includes('stuck') || s.includes('pause')) return 'var(--red)';
+      return 'var(--text-muted)';
+    };
+    const pColor = getPhaseColor(cc.phase);
     html += `<div class="cc-info">
       <span class="cc-health-dot" style="background:${hColor}"></span>
       <span class="cc-phase-badge" style="background:${pColor}18;color:${pColor}">${esc(cc.phase)}</span>

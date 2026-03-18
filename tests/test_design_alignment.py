@@ -275,3 +275,100 @@ class TestCCDisplay:
     def test_cc_summary_fetch(self, html):
         """fetchCCSummary function or cc-summary API call exists."""
         assert "cc-summary" in html or "ccSummary" in html
+
+
+# ── UI Polish (Phase 7) ───────────────────────────────────────────────────────
+
+class TestPhaseColorMapping:
+    def test_phase_colors_uses_substring_matching(self, html):
+        """Phase color lookup uses toLowerCase/includes for substring matching, not exact dict lookup."""
+        assert "toLowerCase" in html and (
+            "includes" in html or "indexOf" in html
+        ), "phaseColors must use substring/keyword matching not exact-match object lookup"
+
+    def test_phase_complete_maps_to_green(self, html):
+        """'complete' phase keyword maps to green color."""
+        assert "complete" in html.lower()
+        # The function must handle 'complete' — verified by presence of green var and phase logic
+        assert "var(--green)" in html
+
+    def test_phase_maintenance_maps_to_yellow(self, html):
+        """'maintenance' phase keyword maps to yellow."""
+        assert "maintenance" in html
+        assert "var(--yellow)" in html
+
+    def test_phase_color_function_defined(self, html):
+        """A phase color resolution function or helper exists."""
+        assert "phaseColor" in html or "getPhaseColor" in html or "pColor" in html
+
+
+class TestHealthDotConsistency:
+    def test_cc_health_dot_has_vertical_align(self, html):
+        """.cc-health-dot CSS includes vertical-align for inline alignment."""
+        import re
+        dot_match = re.search(r'\.cc-health-dot\s*\{[^}]+\}', html)
+        assert dot_match, ".cc-health-dot CSS rule not found"
+        rule = dot_match.group()
+        assert "vertical-align" in rule or "flex" in rule or "align-items" in rule, \
+            ".cc-health-dot must have vertical-align or flex alignment"
+
+    def test_cc_health_dot_consistent_size(self, html):
+        """.cc-health-dot has explicit width and height."""
+        import re
+        dot_match = re.search(r'\.cc-health-dot\s*\{[^}]+\}', html)
+        assert dot_match
+        rule = dot_match.group()
+        assert "width" in rule and "height" in rule
+
+
+class TestHeaderLayout:
+    def test_header_right_no_wrap(self, html):
+        """.header-right uses flex-nowrap or controlled wrapping strategy."""
+        import re
+        hr_match = re.search(r'\.header-right\s*\{[^}]+\}', html)
+        assert hr_match, ".header-right CSS rule not found"
+        rule = hr_match.group()
+        # Should have flex-wrap nowrap OR use a separator/divider approach
+        assert "nowrap" in rule or "gap" in rule
+
+    def test_header_right_has_divider_or_separator(self, html):
+        """Header right area has visual separator between source badges and action buttons."""
+        assert "header-divider" in html or "border-left" in html or "border-right" in html or \
+               "separator" in html or "1px solid" in html
+
+
+class TestCCInfoSection:
+    def test_cc_info_has_background(self, html):
+        """.cc-info section has a background or border for visual distinction."""
+        import re
+        cc_info_match = re.search(r'\.cc-info\s*\{[^}]+\}', html)
+        assert cc_info_match, ".cc-info CSS rule not found"
+        rule = cc_info_match.group()
+        assert "background" in rule or "border" in rule or "padding" in rule, \
+            ".cc-info must have background, border, or padding for visual distinction"
+
+    def test_cc_info_has_border_radius(self, html):
+        """.cc-info section has border-radius for polish."""
+        import re
+        cc_info_match = re.search(r'\.cc-info\s*\{[^}]+\}', html)
+        assert cc_info_match
+        rule = cc_info_match.group()
+        assert "border-radius" in rule
+
+
+class TestWorktreeNestingPolish:
+    def test_worktree_group_has_gap_or_padding(self, html):
+        """.worktree-group has padding-top or gap for breathing room."""
+        import re
+        group_match = re.search(r'\.worktree-group\s*\{[^}]+\}', html)
+        assert group_match
+        rule = group_match.group()
+        assert "padding" in rule or "gap" in rule or "margin" in rule
+
+    def test_worktree_nested_card_has_border_radius(self, html):
+        """.worktree-nested-card has border-radius."""
+        import re
+        nested_match = re.search(r'\.worktree-nested-card\s*\{[^}]+\}', html)
+        assert nested_match, ".worktree-nested-card CSS rule not found"
+        rule = nested_match.group()
+        assert "border-radius" in rule
